@@ -19,11 +19,29 @@ interface MeterReadingsTableProps {
 }
 
 const MeterReadingsTable: React.FC<MeterReadingsTableProps> = ({ data }) => {
-  const formatDate = (dateString: string) => {
+  const formatDate = (value: string | Date | number | null | undefined) => {
+    if (!value) return '-';
     try {
-      return format(parseISO(dateString), "PP"); // e.g., Sep 21, 2023
+      let d: Date;
+      if (typeof value === 'string') {
+        d = parseISO(value);
+      } else if (typeof value === 'number') {
+        d = new Date(value);
+      } else if (value instanceof Date) {
+        d = value;
+      } else {
+        // Unknown type, coerce to string then try parse
+        d = parseISO(String(value));
+      }
+      // If date-fns format throws for invalid dates, catch below
+      return format(d, 'PP');
     } catch (e) {
-      return dateString; // Fallback if parsing fails
+      try {
+        // Last resort: convert to string
+        return String(value);
+      } catch (_err) {
+        return '-';
+      }
     }
   };
 
@@ -50,7 +68,7 @@ const MeterReadingsTable: React.FC<MeterReadingsTableProps> = ({ data }) => {
                     {reading.meterType === 'individual' ? 'Individual' : 'Bulk'}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right">{reading.readingValue.toFixed(2)}</TableCell>
+                <TableCell className="text-right">{typeof reading.readingValue === 'number' ? reading.readingValue.toFixed(2) : '-'}</TableCell>
                 <TableCell>{formatDate(reading.readingDate)}</TableCell>
                 <TableCell>{reading.monthYear}</TableCell>
                 <TableCell className="text-xs text-muted-foreground truncate max-w-xs">{reading.notes || "-"}</TableCell>

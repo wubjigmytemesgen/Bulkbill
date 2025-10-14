@@ -206,7 +206,9 @@ export default function AdminNotificationsPage() {
                               {branches
                                 .filter(branch => !isBranchManager || branch.id === user.branchId)
                                 .map(branch => (
-                                  <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+                                  branch?.id ? (
+                                    <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+                                  ) : null
                                 ))}
                             </SelectContent>
                         </Select>

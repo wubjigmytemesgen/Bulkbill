@@ -103,6 +103,7 @@ export default function BulkMetersPage() {
     }
     
     if (selectedBulkMeter) {
+      if (!hasPermission('bulk_meters_update')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to update bulk meters.' }); return; }
       const result = await updateBulkMeterInStore(selectedBulkMeter.customerKeyNumber, data);
       if (result.success) {
         toast({ title: "Bulk Meter Updated", description: `${data.name} has been updated.` });
@@ -110,6 +111,7 @@ export default function BulkMetersPage() {
         toast({ variant: "destructive", title: "Update Failed", description: result.message });
       }
     } else {
+      if (!hasPermission('bulk_meters_create')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to create bulk meters.' }); return; }
       const result = await addBulkMeterToStore(data, currentUser); 
       if (result.success) {
         toast({ title: "Bulk Meter Added", description: `${data.name} has been added and is pending approval.` });

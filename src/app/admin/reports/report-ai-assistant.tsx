@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { ReportDataView } from "./report-data-view";
 import { generateReport } from "@/ai/flows/report-flow";
-import { arrayToXlsxBlob, downloadFile } from "./page";
+import { arrayToXlsxBlob, downloadFile } from '@/lib/xlsx';
 import type { ReportRequest, ReportResponse } from '@/ai/flows/report-flow-types';
 
 

@@ -29,7 +29,7 @@ import { getBranches, initializeBranches, subscribeToBranches, getRoles, initial
 import type { Branch } from "@/app/admin/branches/branch-types";
 import type { DomainRole } from "@/lib/data-store";
 
-const staffStatuses: StaffStatus[] = ['Active', 'Inactive', 'On Leave'];
+const staffStatuses = ['Active', 'Inactive', 'On Leave'] as const;
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -116,7 +116,7 @@ export function StaffFormDialog({ open, onOpenChange, onSubmit, defaultValues }:
         email: "",
         password: "",
         branchName: "",
-        status: "Active",
+        status: "Active" as StaffStatus,
         phone: "",
         role: "Staff",
       });
@@ -210,8 +210,8 @@ export function StaffFormDialog({ open, onOpenChange, onSubmit, defaultValues }:
                     </FormControl>
                     <SelectContent>
                       <SelectItem value="Head Office">Head Office</SelectItem>
-                      {availableBranches.map(branch => (
-                        <SelectItem key={branch.id} value={branch.name}>{branch.name}</SelectItem>
+                      {availableBranches.filter(b => b.name && b.name !== '').map((branch, idx) => (
+                        <SelectItem key={branch.id ?? `branch-${idx}`} value={String(branch.name)}>{branch.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -232,8 +232,8 @@ export function StaffFormDialog({ open, onOpenChange, onSubmit, defaultValues }:
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {availableRoles.map(role => (
-                        <SelectItem key={role.id} value={role.role_name}>{role.role_name}</SelectItem>
+                      {availableRoles.filter(r => r.role_name && r.role_name !== '').map((role, idx) => (
+                        <SelectItem key={role.id ?? `role-${idx}`} value={String(role.role_name)}>{role.role_name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -254,8 +254,8 @@ export function StaffFormDialog({ open, onOpenChange, onSubmit, defaultValues }:
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {staffStatuses.map(status => (
-                        <SelectItem key={status} value={status}>{status}</SelectItem>
+                      {staffStatuses.filter(s => s).map(status => (
+                        <SelectItem key={status} value={String(status)}>{status}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

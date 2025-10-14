@@ -21,47 +21,123 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 
 const mapTariffTierToDisplay = (tier: TariffTier | SewerageTier, index: number, prevTier?: TariffTier | SewerageTier): DisplayTariffRate => {
+  // Coerce tier.limit to a numeric value or numeric Infinity for display logic.
+  const limitValue: number | typeof Infinity = (tier.limit === 'Infinity' || tier.limit === Infinity) ? Infinity : Number(tier.limit);
+
   let minConsumption: number;
   if (index === 0) {
     minConsumption = 1;
   } else if (prevTier) {
-    const prevLimit = prevTier.limit === "Infinity" ? Infinity : prevTier.limit;
+    const prevLimit = (prevTier.limit === 'Infinity' || prevTier.limit === Infinity) ? Infinity : Number(prevTier.limit);
     minConsumption = prevLimit === Infinity ? Infinity : Math.floor(prevLimit) + 1;
   } else {
     minConsumption = 1;
   }
 
-  const maxConsumptionDisplay = tier.limit === "Infinity" ? "Above" : String(Math.floor(tier.limit as number));
-  const minConsumptionDisplay = minConsumption === Infinity ? "N/A" : String(minConsumption);
+  const isInfinity = limitValue === Infinity;
+  const maxConsumptionDisplay = isInfinity ? 'Above' : String(Math.floor(limitValue as number));
+  const minConsumptionDisplay = minConsumption === Infinity ? 'N/A' : String(minConsumption);
 
-  const prevLimitForDesc = prevTier ? Math.floor(prevTier.limit as number) : 0;
-  const description = tier.limit === "Infinity"
+  const prevLimitForDesc = prevTier ? Math.floor(((prevTier.limit === 'Infinity' || prevTier.limit === Infinity) ? Infinity : Number(prevTier.limit)) as number) : 0;
+  const description = isInfinity
     ? `Tier ${index + 1}: Above ${prevLimitForDesc} m³`
     : `Tier ${index + 1}: ${minConsumptionDisplay} - ${maxConsumptionDisplay} m³`;
 
   return {
-    id: `tier-${index}-${tier.rate}-${tier.limit}`,
+    id: `tier-${index}-${tier.rate}-${String(tier.limit)}`,
     description,
     minConsumption: minConsumptionDisplay,
     maxConsumption: maxConsumptionDisplay,
-    rate: tier.rate,
-    originalLimit: tier.limit,
-    originalRate: tier.rate,
+    rate: Number(tier.rate),
+    originalLimit: limitValue,
+    originalRate: Number(tier.rate),
   };
 };
 
-const getDisplayTiersFromData = (tariffInfo?: TariffInfo, tierType: 'water' | 'sewerage' = 'water'): DisplayTariffRate[] => {
-    if (!tariffInfo) return [];
-    
-    const tiersToMap = tierType === 'sewerage' ? tariffInfo.sewerage_tiers : tariffInfo.tiers;
-    if (!tiersToMap || tiersToMap.length === 0) return [];
+// Normalize tiers stored in different shapes (array, object with numeric keys,
+// JSON string, single object). Coerce numeric strings to numbers and map
+// special Infinity representations to the string "Infinity" so downstream
+// logic can detect it.
+const normalizeTiers = (raw: any): Array<TariffTier | SewerageTier> => {
+  if (!raw) return [];
 
-    let previousTier: TariffTier | SewerageTier | undefined;
-    return tiersToMap.map((tier, index) => {
-        const displayTier = mapTariffTierToDisplay(tier, index, previousTier);
-        previousTier = tier;
-        return displayTier;
-    });
+  // If it's already an array, clone it
+  if (Array.isArray(raw)) {
+    return raw.map((t) => normalizeTierItem(t));
+  }
+
+  // If it's a string, try to parse JSON
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map((t: any) => normalizeTierItem(t));
+      return [normalizeTierItem(parsed)];
+    } catch (e) {
+      // not JSON — cannot normalize
+      return [];
+    }
+  }
+
+  // If it's an object with numeric keys (like {0: {...}, 1: {...}}), take values
+  if (typeof raw === 'object') {
+    // If it's already a tier-like object (has rate/limit), wrap into array
+    if ('rate' in raw || 'limit' in raw) {
+      return [normalizeTierItem(raw)];
+    }
+
+    try {
+      const vals = Object.values(raw || {});
+      if (vals.length > 0) return vals.map((t) => normalizeTierItem(t));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  return [];
+};
+
+const normalizeTierItem = (t: any): any => {
+  if (!t || typeof t !== 'object') return t;
+
+  const out: any = { ...t };
+  // Normalize limit
+  if (out.limit === null || out.limit === undefined) {
+    out.limit = 0;
+  }
+  if (typeof out.limit === 'string') {
+    const s = out.limit.trim();
+    if (s === 'Infinity' || s.toLowerCase() === 'infinity' || s.toLowerCase() === 'above') {
+      out.limit = Infinity;
+    } else if (!isNaN(Number(s))) {
+      out.limit = Number(s);
+    }
+  }
+  if (typeof out.limit === 'number' && !Number.isFinite(out.limit)) {
+    out.limit = Infinity;
+  }
+
+  // Normalize rate
+  if (typeof out.rate === 'string') {
+    const r = out.rate.trim();
+    if (!isNaN(Number(r))) out.rate = Number(r);
+  }
+
+  return out;
+};
+
+const getDisplayTiersFromData = (tariffInfo?: TariffInfo, tierType: 'water' | 'sewerage' = 'water'): DisplayTariffRate[] => {
+  if (!tariffInfo) return [];
+
+  const raw = tierType === 'sewerage' ? tariffInfo.sewerage_tiers : tariffInfo.tiers;
+  const tiersToMap = normalizeTiers(raw);
+  if (!tiersToMap || tiersToMap.length === 0) return [];
+
+  let previousTier: TariffTier | SewerageTier | undefined;
+  return tiersToMap.map((tier, index) => {
+    const displayTier = mapTariffTierToDisplay(tier, index, previousTier);
+    previousTier = tier as any;
+    return displayTier;
+  });
 };
 
 const generateYearOptions = () => {
@@ -78,7 +154,7 @@ export default function TariffManagementPage() {
   const { toast } = useToast();
   
   const [currentYear, setCurrentYear] = React.useState<number>(new Date().getFullYear());
-  const [currentTariffType, setCurrentTariffType] = React.useState<'Domestic' | 'Non-domestic'>('Domestic');
+  const [currentTariffType, setCurrentTariffType] = React.useState<'Domestic' | 'Non-domestic' | 'rental Non domestic' | 'rental domestic'>('Domestic');
   const [allTariffs, setAllTariffs] = React.useState<TariffInfo[]>([]);
   const [isDataLoading, setIsDataLoading] = React.useState(true);
   
@@ -96,6 +172,9 @@ export default function TariffManagementPage() {
   const activeWaterTiers = getDisplayTiersFromData(activeTariffInfo, 'water');
   const activeSewerageTiers = getDisplayTiersFromData(activeTariffInfo, 'sewerage');
   const yearOptions = React.useMemo(() => generateYearOptions(), []);
+
+  // Prefer a parsed version of the currently selected tariff (some sources store JSON fields as strings)
+  const parsedActiveTariff = getTariff(currentTariffType, currentYear);
 
   const canUpdateTariffs = hasPermission('tariffs_update');
 
@@ -117,7 +196,7 @@ export default function TariffManagementPage() {
           ? { tiers: newTiers as TariffTier[] }
           : { sewerage_tiers: newTiers as SewerageTier[] };
 
-      const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.year, newTariffInfo);
+  const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.year, newTariffInfo as any);
       if (result.success) {
           toast({ title: "Tariff Updated", description: `${currentTariffType} ${type} tariff rates for ${currentYear} have been saved.` });
       } else {
@@ -187,13 +266,20 @@ export default function TariffManagementPage() {
       toast({ variant: "destructive", title: "Error", description: "No active tariff selected to save meter rents." });
       return;
     }
-    
+
+    // coerce values to numbers (form returns numbers but be defensive)
+    const normalizedPrices: { [key: string]: number } = Object.entries(newPrices).reduce((acc, [k, v]) => {
+      const num = typeof v === 'number' ? v : Number(v);
+      acc[k] = Number.isFinite(num) ? num : 0;
+      return acc;
+    }, {} as { [key: string]: number });
+
     const updatePayload: Partial<TariffInfo> = {
-        meter_rent_prices: newPrices,
+        meter_rent_prices: normalizedPrices,
     };
-    
-    const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.year, updatePayload);
-    
+
+    const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.year, updatePayload as any);
+
     if (result.success) {
       toast({ title: "Meter Rent Prices Updated", description: `New prices for ${currentYear} have been saved.` });
       setIsMeterRentDialogOpen(false);
@@ -221,7 +307,7 @@ export default function TariffManagementPage() {
       year: newYear,
     };
     
-    const result = await addTariff(newTariffData);
+  const result = await addTariff(newTariffData as any);
 
     if (result.success) {
       toast({ title: "New Tariff Created", description: `Successfully created tariff for ${currentTariffType} for the year ${newYear}, copied from ${currentYear}.` });
@@ -282,7 +368,7 @@ export default function TariffManagementPage() {
             <Label htmlFor="customer-category">Select Customer Category</Label>
             <Select 
                 value={currentTariffType} 
-                onValueChange={(value) => setCurrentTariffType(value as 'Domestic' | 'Non-domestic')}
+                onValueChange={(value) => setCurrentTariffType(value as 'Domestic' | 'Non-domestic' | 'rental Non domestic' | 'rental domestic')}
             >
               <SelectTrigger id="customer-category" className="w-full md:w-[200px]">
                 <SelectValue placeholder="Select a category" />
@@ -290,6 +376,8 @@ export default function TariffManagementPage() {
               <SelectContent>
                 <SelectItem value="Domestic">Domestic</SelectItem>
                 <SelectItem value="Non-domestic">Non-domestic</SelectItem>
+                <SelectItem value="rental Non domestic">rental Non domestic</SelectItem>
+                <SelectItem value="rental domestic">rental domestic</SelectItem>
               </SelectContent>
             </Select>
           </div>

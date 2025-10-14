@@ -155,9 +155,9 @@ export default function StaffDashboardPage() {
     const totalPendingApprovals = pendingCustomers + pendingBulkMeters;
 
 
-    // Calculation for the "Bills Status" card (includes both, for the current month)
-    const paidCount = currentMonthBMs.filter(bm => bm.paymentStatus === 'Paid').length + currentMonthCustomers.filter(c => c.paymentStatus === 'Paid').length;
-    const unpaidCount = currentMonthBMs.filter(bm => bm.paymentStatus === 'Unpaid').length + currentMonthCustomers.filter(c => c.paymentStatus === 'Unpaid' || c.paymentStatus === 'Pending').length;
+    // Calculation for the "Bills Status" card (Bulk Meters, current month)
+    const paidCount = currentMonthBMs.filter(bm => bm.paymentStatus === 'Paid').length;
+    const unpaidCount = currentMonthBMs.filter(bm => bm.paymentStatus === 'Unpaid').length;
     const totalBillsCount = paidCount + unpaidCount;
     const billsData = [
         { name: 'Paid', value: paidCount, fill: 'hsl(var(--chart-1))' },

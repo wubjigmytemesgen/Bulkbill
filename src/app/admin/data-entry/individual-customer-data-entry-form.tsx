@@ -187,9 +187,11 @@ export function IndividualCustomerDataEntryForm() {
                         <SelectContent>
                           <SelectItem value={BRANCH_UNASSIGNED_VALUE}>None</SelectItem>
                           {availableBranches.map((branch) => (
-                            <SelectItem key={branch.id} value={branch.id}>
-                              {branch.name}
-                            </SelectItem>
+                            branch?.id ? (
+                              <SelectItem key={branch.id} value={branch.id}>
+                                {branch.name}
+                              </SelectItem>
+                            ) : null
                           ))}
                         </SelectContent>
                       </Select>
@@ -292,7 +294,7 @@ export function IndividualCustomerDataEntryForm() {
                         </FormControl>
                         <SelectContent>
                           {subCityOptions.map(option => (
-                            <SelectItem key={option} value={option}>
+                            <SelectItem key={String(option)} value={String(option)}>
                               {option}
                             </SelectItem>
                           ))}
@@ -316,7 +318,7 @@ export function IndividualCustomerDataEntryForm() {
                         </FormControl>
                         <SelectContent>
                           {woredaOptions.map(option => (
-                            <SelectItem key={option} value={option}>
+                            <SelectItem key={String(option)} value={String(option)}>
                               {option}
                             </SelectItem>
                           ))}

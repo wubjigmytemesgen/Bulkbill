@@ -7,6 +7,7 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuItem,
+  SidebarMenuSubItem,
   SidebarMenuButton,
   SidebarMenuSub,
   SidebarMenuSubButton,
@@ -41,7 +42,7 @@ interface SidebarNavProps {
 }
 
 function NavItemLink({ item, pathname }: { item: NavItem; pathname: string }) {
-  const IconComponent = item.iconName ? icons[item.iconName] : null;
+  const IconComponent = item.iconName ? (icons[item.iconName] as unknown as React.ComponentType<LucideProps>) : null;
   const { state: sidebarState, isMobile } = useSidebar();
   const currentDisplayState = isMobile ? (sidebarState === "mobile" ? "expanded" : "collapsed") : sidebarState;
 
@@ -79,7 +80,7 @@ function NavItemLink({ item, pathname }: { item: NavItem; pathname: string }) {
 }
 
 function CollapsibleNavItem({ item, pathname }: { item: NavItem; pathname: string }) {
-  const IconComponent = item.iconName ? icons[item.iconName] : null; 
+  const IconComponent = item.iconName ? (icons[item.iconName as keyof typeof icons] as unknown as React.ComponentType<LucideProps>) : null; 
   const { state: sidebarState, isMobile } = useSidebar();
   const currentDisplayState = isMobile ? (sidebarState === "mobile" ? "expanded" : "collapsed") : sidebarState;
 
@@ -134,7 +135,7 @@ function CollapsibleNavItem({ item, pathname }: { item: NavItem; pathname: strin
       {isOpen && currentDisplayState === 'expanded' && item.items && (
         <SidebarMenuSub>
           {item.items.map((subItem) => {
-            const SubIconComponent = subItem.iconName ? icons[subItem.iconName as keyof typeof icons] : null;
+            const SubIconComponent = subItem.iconName ? (icons[subItem.iconName as keyof typeof icons] as unknown as React.ComponentType<LucideProps>) : null;
             const isSubItemActive = subItem.matcher ? subItem.matcher(pathname, subItem.href) : (pathname === subItem.href || (subItem.href !== '/' && pathname.startsWith(`${subItem.href}/`) && (pathname.length === subItem.href.length || pathname[subItem.href.length] === '/')));
             
             const subLinkContent = (

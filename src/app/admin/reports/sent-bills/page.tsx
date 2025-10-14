@@ -148,16 +148,18 @@ export default function SentBillsReportPage() {
                   />
                 </div>
                 {hasPermission('reports_generate_all') && (
-                  <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+                  <Select value={selectedBranchId || undefined} onValueChange={setSelectedBranchId}>
                       <SelectTrigger className="w-full md:w-[200px]">
                           <SelectValue placeholder="Select Branch" />
                       </SelectTrigger>
                       <SelectContent>
                           <SelectItem value="all">All Branches</SelectItem>
                           {branches.map((branch) => (
-                              <SelectItem key={branch.id} value={branch.id}>
-                              {branch.name}
-                              </SelectItem>
+                              branch?.id !== undefined && branch?.id !== null ? (
+                                <SelectItem key={String(branch.id)} value={String(branch.id)}>
+                                  {branch.name}
+                                </SelectItem>
+                              ) : null
                           ))}
                       </SelectContent>
                   </Select>

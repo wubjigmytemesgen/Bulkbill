@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import * as XLSX from 'xlsx';
+import { arrayToXlsxBlob, downloadFile } from '@/lib/xlsx';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, FileSpreadsheet, Info, AlertCircle, Lock, Archive, Trash2, Filter, Check, ChevronsUpDown, Eye } from "lucide-react";
@@ -46,6 +46,16 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { ReportAIAssistant } from "./report-ai-assistant";
 
 
+// Top-level type guards for meter reading unions (used by multiple reports)
+const isBulkReading = (r: any): r is { meterType: string; bulkMeterId?: string } => {
+  return r && typeof r === 'object' && 'meterType' in r && r.meterType === 'bulk_meter';
+};
+
+const isIndividualReading = (r: any): r is { meterType: string; individualCustomerId?: string } => {
+  return r && typeof r === 'object' && 'meterType' in r && r.meterType === 'individual_customer_meter';
+};
+
+
 interface ReportFilters {
   branchId?: string;
   startDate?: Date;
@@ -60,52 +70,7 @@ interface ReportType {
   getData?: (filters: ReportFilters) => any[];
 }
 
-export const arrayToXlsxBlob = (data: any[], headers: string[]): Blob => {
-  const worksheetData = [
-    headers,
-    ...data.map(row => headers.map(header => row[header] ?? '')),
-  ];
 
-  const ws: XLSX.WorkSheet = XLSX.utils.aoa_to_sheet(worksheetData);
-
-  const range = XLSX.utils.decode_range(ws['!ref']!);
-  for (let C = range.s.c; C <= range.e.c; ++C) {
-    const address = XLSX.utils.encode_cell({ r: 0, c: C });
-    if (!ws[address]) {
-        XLSX.utils.sheet_add_aoa(ws, [[headers[C] || '']], { origin: address });
-    }
-    ws[address].s = { font: { bold: true } };
-  }
-
-  const colWidths = headers.map((header, colIndex) => {
-    let maxLength = (header || '').length;
-    for (const dataRow of worksheetData.slice(1)) {
-      const cellValue = dataRow[colIndex];
-      if (cellValue != null) {
-        maxLength = Math.max(maxLength, String(cellValue).length);
-      }
-    }
-    return { wch: Math.min(maxLength + 2, 60) };
-  });
-  ws['!cols'] = colWidths;
-
-  const wb: XLSX.WorkBook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-
-  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-};
-
-
-export const downloadFile = (content: Blob, fileName: string) => {
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(content);
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(link.href);
-};
 
 
 const availableReports: ReportType[] = [
@@ -309,8 +274,8 @@ const availableReports: ReportType[] = [
         const bulkMetersInBranch = getBulkMeters().filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber);
         const customersInBranch = getCustomers().filter(c => c.branchId === branchId).map(c => c.customerKeyNumber);
         readings = readings.filter(r => 
-          (r.meterType === 'bulk_meter' && r.bulkMeterId && bulkMetersInBranch.includes(r.bulkMeterId)) ||
-          (r.meterType === 'individual_customer_meter' && r.individualCustomerId && customersInBranch.includes(r.individualCustomerId))
+          (isBulkReading(r) && r.bulkMeterId && bulkMetersInBranch.includes(r.bulkMeterId)) ||
+          (isIndividualReading(r) && r.individualCustomerId && customersInBranch.includes(r.individualCustomerId))
         );
       }
       if (startDate && endDate) {
@@ -371,14 +336,16 @@ const availableReports: ReportType[] = [
       const bulkMeters = getBulkMeters();
       const staffList = getStaffMembers();
 
+      // use top-level isBulkReading / isIndividualReading
+
       let filteredReadings = readings;
 
       if (branchId) {
         const bulkMetersInBranch = bulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber);
         const customersInBranch = customers.filter(c => c.branchId === branchId).map(c => c.customerKeyNumber);
         filteredReadings = filteredReadings.filter(r => 
-          (r.meterType === 'bulk_meter' && r.bulkMeterId && bulkMetersInBranch.includes(r.bulkMeterId)) ||
-          (r.meterType === 'individual_customer_meter' && r.individualCustomerId && customersInBranch.includes(r.individualCustomerId))
+          (isBulkReading(r) && r.bulkMeterId && bulkMetersInBranch.includes(r.bulkMeterId)) ||
+          (isIndividualReading(r) && r.individualCustomerId && customersInBranch.includes(r.individualCustomerId))
         );
       }
       if (startDate && endDate) {
@@ -392,12 +359,12 @@ const availableReports: ReportType[] = [
         });
       }
 
-      const dataWithNames = filteredReadings.map(r => {
+        const dataWithNames = filteredReadings.map(r => {
         let meterIdentifier = "N/A";
-        if (r.meterType === 'individual_customer_meter' && r.individualCustomerId) {
+        if (isIndividualReading(r) && r.individualCustomerId) {
           const cust = customers.find(c => c.customerKeyNumber === r.individualCustomerId);
           meterIdentifier = cust ? `${cust.name} (M: ${cust.meterNumber || 'N/A'})` : `Cust ID: ${r.individualCustomerId}`;
-        } else if (r.meterType === 'bulk_meter' && r.bulkMeterId) {
+        } else if (isBulkReading(r) && r.bulkMeterId) {
           const bm = bulkMeters.find(b => b.customerKeyNumber === r.bulkMeterId);
           meterIdentifier = bm ? `${bm.name} (M: ${bm.meterNumber || 'N/A'})` : `BM ID: ${r.bulkMeterId}`;
         }
@@ -408,7 +375,7 @@ const availableReports: ReportType[] = [
         return {
           "Reading ID": r.id,
           "Meter Identifier": meterIdentifier,
-          "Meter Type": r.meterType === 'individual_customer_meter' ? 'Individual' : 'Bulk',
+          "Meter Type": isIndividualReading(r) ? 'Individual' : (isBulkReading(r) ? 'Bulk' : 'Unknown'),
           "Reading Date": r.readingDate, 
           "Month/Year": r.monthYear,
           "Reading Value": r.readingValue,
@@ -626,7 +593,7 @@ export default function AdminReportsPage() {
         <CardContent className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="report-type">Select Report Type</Label>
-            <Select value={selectedReportId} onValueChange={(value) => {
+            <Select value={selectedReportId || undefined} onValueChange={(value) => {
               setSelectedReportId(value);
               setReportData(null);
             }}>
@@ -634,14 +601,20 @@ export default function AdminReportsPage() {
                 <SelectValue placeholder="Choose a report..." />
               </SelectTrigger>
               <SelectContent>
-                {availableReports.map((report) => (
-                  <SelectItem key={report.id} value={report.id} disabled={!report.getData}>
+                {availableReports.map((report, idx) => {
+                  const safeReportId = report.id && String(report.id).trim() !== '' ? String(report.id) : `report-fallback-${idx}`;
+                  if (!report.id || String(report.id).trim() === '') {
+                    console.warn('availableReports contains a report with empty id, using fallback id:', report);
+                  }
+                  return (
+                  <SelectItem key={safeReportId} value={safeReportId} disabled={!report.getData}>
                     <div className="flex items-center gap-2">
                       <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
                       {report.name}
                     </div>
                   </SelectItem>
-                ))}
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -658,20 +631,25 @@ export default function AdminReportsPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
                         <div className="space-y-2">
                             <Label htmlFor="branch-filter">Filter by Branch</Label>
-                            <Select 
-                                value={selectedBranch} 
-                                onValueChange={setSelectedBranch} 
-                                disabled={isLoading || !canSelectAllBranches}
-                            >
+              <Select 
+                value={selectedBranch || undefined} 
+                onValueChange={setSelectedBranch} 
+                disabled={isLoading || !canSelectAllBranches}
+              >
                                 <SelectTrigger id="branch-filter" className={!canSelectAllBranches ? 'cursor-not-allowed' : ''}>
                                     {isLockedToBranch && <Lock className="mr-2 h-4 w-4" />}
                                     <SelectValue placeholder="Select a branch"/>
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {canSelectAllBranches && <SelectItem value="all">All Branches</SelectItem>}
-                                    {branches.map(branch => (
-                                        <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
-                                    ))}
+                  {canSelectAllBranches && <SelectItem value="all">All Branches</SelectItem>}
+                  {branches
+                    .filter(b => b && b.id && String(b.id).trim() !== '')
+                    .map((branch) => (
+                      <SelectItem key={String(branch.id)} value={String(branch.id)}>{branch.name}</SelectItem>
+                    ))}
+                  {branches.filter(b => !b || !b.id || String(b.id).trim() === '').length > 0 && (
+                    <SelectItem value="__invalid_branch__" disabled>Invalid branch entry</SelectItem>
+                  )}
                                 </SelectContent>
                             </Select>
                         </div>

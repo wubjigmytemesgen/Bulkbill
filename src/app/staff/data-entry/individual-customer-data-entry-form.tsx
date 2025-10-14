@@ -73,9 +73,9 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
       currentReading: undefined,
       month: "",
       specificArea: "",
-      location: "",
+      subCity: "",
       branchId: staffBranchId,
-      ward: "",
+      woreda: "",
       sewerageConnection: undefined,
     },
   });
@@ -121,7 +121,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
   }, [branchName, staffBranchId]);
 
   React.useEffect(() => {
-    form.reset({ ...form.getValues(), location: "", branchId: staffBranchId });
+    form.reset({ ...form.getValues(), subCity: "", branchId: staffBranchId });
   }, [staffBranchId, form]);
 
   async function onSubmit(data: StaffEntryFormValues) {
@@ -143,25 +143,25 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
         title: "Data Entry Submitted for Approval",
         description: `Data for customer ${result.data.name} has been recorded and is now pending approval.`,
         });
-        form.reset({ 
-            assignedBulkMeterId: UNASSIGNED_BULK_METER_VALUE,
-            name: "",
-            customerKeyNumber: "",
-            contractNumber: "",
-            customerType: undefined,
-            bookNumber: "",
-            ordinal: undefined,
-            meterSize: undefined,
-            meterNumber: "",
-            previousReading: undefined,
-            currentReading: undefined,
-            month: "",
-            specificArea: "",
-            location: "",
-            branchId: staffBranchId,
-            ward: "",
-            sewerageConnection: undefined,
-        });
+    form.reset({ 
+      assignedBulkMeterId: UNASSIGNED_BULK_METER_VALUE,
+      name: "",
+      customerKeyNumber: "",
+      contractNumber: "",
+      customerType: undefined,
+      bookNumber: "",
+      ordinal: undefined,
+      meterSize: undefined,
+      meterNumber: "",
+      previousReading: undefined,
+      currentReading: undefined,
+      month: "",
+      specificArea: "",
+      subCity: "",
+      branchId: staffBranchId,
+      woreda: "",
+      sewerageConnection: undefined,
+    });
     } else {
         toast({
             variant: "destructive",
@@ -206,7 +206,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
                                 <SelectValue placeholder={isLoadingBulkMeters ? "Loading bulk meters..." : "Select a bulk meter"} />
                             </SelectTrigger>
                             </FormControl>
-                            <SelectContent>
+                <SelectContent>
                             <SelectItem value={UNASSIGNED_BULK_METER_VALUE}>None</SelectItem>
                             {availableBulkMeters.length === 0 && !isLoadingBulkMeters && (
                                 <SelectItem value="no-bms-available-staff" disabled>
@@ -248,11 +248,11 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
                         </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                        {meterSizeOptions.map(option => (
-                        <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                        </SelectItem>
-                        ))}
+              {meterSizeOptions.map(option => (
+              <SelectItem key={String(option.value)} value={String(option.value)}>
+                {option.label}
+              </SelectItem>
+              ))}
                     </SelectContent>
                     </Select>
                     <FormMessage />
@@ -268,13 +268,13 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
             
             <FormField
               control={form.control}
-              name="location"
+              name="subCity"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Sub-City *</FormLabel>
                    <Select 
                       onValueChange={field.onChange} 
-                      value={field.value} 
+                      value={field.value || undefined} 
                       disabled={commonFieldDisabled}
                     >
                     <FormControl>
@@ -284,7 +284,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
                     </FormControl>
                     <SelectContent>
                       {subCityOptions.map(option => (
-                        <SelectItem key={option} value={option}>
+                        <SelectItem key={String(option)} value={String(option)}>
                           {option}
                         </SelectItem>
                       ))}
@@ -296,11 +296,11 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
             />
              <FormField
               control={form.control}
-              name="ward"
+              name="woreda"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Woreda *</FormLabel>
-                   <Select onValueChange={field.onChange} value={field.value} disabled={commonFieldDisabled}>
+                   <Select onValueChange={field.onChange} value={field.value || undefined} disabled={commonFieldDisabled}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a Woreda" />
@@ -308,7 +308,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
                     </FormControl>
                     <SelectContent>
                       {woredaOptions.map(option => (
-                        <SelectItem key={option} value={option}>
+                        <SelectItem key={String(option)} value={String(option)}>
                           {option}
                         </SelectItem>
                       ))}

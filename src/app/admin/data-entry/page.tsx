@@ -40,15 +40,15 @@ export default function AdminDataEntryPage() {
   }, []);
 
   const handleBulkMeterCsvUpload = async (data: BulkMeterDataEntryFormValues) => {
-    if (!currentUser) return;
+    if (!currentUser) return { success: false, message: "User not authenticated" };
     // Admins can upload directly as 'Active', others are 'Pending Approval'
     const status: BulkMeterStatus = currentUser.role.toLowerCase() === 'admin' ? 'Active' : 'Pending Approval';
     const bulkMeterDataWithStatus = { ...data, status };
-    await addBulkMeter(bulkMeterDataWithStatus, currentUser);
+    return await addBulkMeter(bulkMeterDataWithStatus, currentUser);
   };
 
   const handleIndividualCustomerCsvUpload = async (data: IndividualCustomerDataEntryFormValues) => {
-     if (!currentUser) return;
+     if (!currentUser) return { success: false, message: "User not authenticated" };
      // Admins can upload directly as 'Active', others are 'Pending Approval'
      const status: IndividualCustomerStatus = currentUser.role.toLowerCase() === 'admin' ? 'Active' : 'Pending Approval';
      const customerDataForStore = {
@@ -56,7 +56,7 @@ export default function AdminDataEntryPage() {
         status,
         paymentStatus: 'Unpaid', // Default payment status
     } as Omit<IndividualCustomer, 'created_at' | 'updated_at' | 'calculatedBill' | 'approved_by' | 'approved_at'>;
-    await addCustomer(customerDataForStore, currentUser);
+    return await addCustomer(customerDataForStore, currentUser);
   };
 
   const downloadCsvTemplate = (headers: string[], fileName: string) => {

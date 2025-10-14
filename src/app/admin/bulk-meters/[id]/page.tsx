@@ -30,6 +30,29 @@ import { IndividualCustomerFormDialog, type IndividualCustomerFormValues } from 
 import { AddReadingDialog } from "@/components/add-reading-dialog";
 import { cn } from "@/lib/utils";
 import { format, parseISO, lastDayOfMonth } from "date-fns";
+
+// Safely format a date value that may be a string (ISO), a Date object, a timestamp, or null/undefined.
+function formatDateForDisplay(value?: string | Date | number | null) {
+  if (value === undefined || value === null || value === '') return 'N/A';
+  try {
+    let d: Date;
+    if (typeof value === 'string') {
+      // parseISO will throw if invalid string
+      d = parseISO(value);
+    } else if (typeof value === 'number') {
+      d = new Date(value);
+    } else if (value instanceof Date) {
+      d = value;
+    } else {
+      // fallback: attempt Date constructor
+      d = new Date(String(value));
+    }
+    if (isNaN(d.getTime())) return 'N/A';
+    return format(d, 'PP');
+  } catch (e) {
+    return 'N/A';
+  }
+}
 import { TablePagination } from "@/components/ui/table-pagination";
 import { Separator } from "@/components/ui/separator";
 
@@ -141,12 +164,14 @@ export default function BulkMeterDetailsPage() {
       differenceUsage += 1;
     }
 
-    const { totalBill: differenceBill, ...differenceBillBreakdown } = await calculateBill(differenceUsage, effectiveBulkMeterCustomerType, effectiveBulkMeterSewerageConnection, currentBulkMeter.meterSize, billingMonth);
+  const differenceFull = await calculateBill(differenceUsage, effectiveBulkMeterCustomerType, effectiveBulkMeterSewerageConnection, currentBulkMeter.meterSize, billingMonth);
+  const differenceBill = differenceFull.totalBill;
+  const differenceBillBreakdown = differenceFull;
   
     const totalPayable = differenceBill + outStandingBillValue;
-    const paymentStatus = totalPayable > 0.01 ? 'Unpaid' : 'Paid';
+  const paymentStatus: PaymentStatus = totalPayable > 0.01 ? 'Unpaid' : 'Paid';
   
-    const displayBranchName = currentBulkMeter.branchId ? currentBranches.find(b => b.id === currentBulkMeter.branchId)?.name : currentBulkMeter.location;
+  const displayBranchName = currentBulkMeter.branchId ? (currentBranches.find(b => b.id === currentBulkMeter.branchId)?.name ?? currentBulkMeter.location ?? "N/A") : (currentBulkMeter.location ?? "N/A");
   
     const billToRender = currentBillForPrintView || (currentBillingHistory.length > 0 ? currentBillingHistory[0] : null);
   
@@ -168,7 +193,7 @@ export default function BulkMeterDetailsPage() {
         differenceUsage: billToRender.differenceUsage ?? 0,
         outstandingBill: billToRender.balanceCarriedForward ?? 0,
         totalPayable: (billToRender.balanceCarriedForward ?? 0) + billToRender.totalAmountDue,
-        paymentStatus: billToRender.paymentStatus,
+  paymentStatus: (billToRender.paymentStatus as PaymentStatus) || 'Unpaid',
         month: billToRender.monthYear,
       };
     } else {
@@ -181,7 +206,7 @@ export default function BulkMeterDetailsPage() {
         differenceUsage: differenceUsage,
         outstandingBill: outStandingBillValue,
         totalPayable: totalPayable,
-        paymentStatus: paymentStatus,
+  paymentStatus: paymentStatus,
         month: currentBulkMeter.month || 'N/A'
       };
     }
@@ -596,7 +621,9 @@ export default function BulkMeterDetailsPage() {
 
   if (isLoading) return <div className="p-4 text-center">Loading bulk meter details...</div>;
   if (!bulkMeter && !isLoading) return <div className="p-4 text-center">Bulk meter not found or an error occurred.</div>;
-  
+  // Narrow bulkMeter for JSX usage
+  const currentBulkMeter = bulkMeter!;
+
   return (
     <div className="space-y-6 p-4">
       {showSlip ? (
@@ -625,16 +652,16 @@ export default function BulkMeterDetailsPage() {
               </div>
               <div className="print-body">
                 <div className="print-section">
-                  <div className="print-row"><span>Bulk meter name:</span> <span>{bulkMeter.name}</span></div>
-                  <div className="print-row"><span>Customer key number:</span> <span>{bulkMeter.customerKeyNumber}</span></div>
-                  <div className="print-row"><span>Contract No:</span> <span>{bulkMeter.contractNumber ?? 'N/A'}</span></div>
+                  <div className="print-row"><span>Bulk meter name:</span> <span>{currentBulkMeter.name}</span></div>
+                  <div className="print-row"><span>Customer key number:</span> <span>{currentBulkMeter.customerKeyNumber}</span></div>
+                  <div className="print-row"><span>Contract No:</span> <span>{currentBulkMeter.contractNumber ?? 'N/A'}</span></div>
                   <div className="print-row"><span>Branch:</span> <span>{displayBranchName ?? 'N/A'}</span></div>
-                  <div className="print-row"><span>Sub-City:</span> <span>{bulkMeter.location}</span></div>
+                  <div className="print-row"><span>Sub-City:</span> <span>{currentBulkMeter.location}</span></div>
                 </div>
 
                 <div className="print-section">
-                  <div className="print-row"><span>Bulk Meter Category:</span> <span>{bulkMeter.chargeGroup}</span></div>
-                  <div className="print-row"><span>Sewerage Connection:</span> <span>{bulkMeter.sewerageConnection}</span></div>
+                  <div className="print-row"><span>Bulk Meter Category:</span> <span>{currentBulkMeter.chargeGroup}</span></div>
+                  <div className="print-row"><span>Sewerage Connection:</span> <span>{currentBulkMeter.sewerageConnection}</span></div>
                   <div className="print-row"><span>Number of Assigned Individual Customers:</span> <span>{associatedCustomers.length}</span></div>
                   <div className="print-row"><span>Previous and current reading:</span> <span>{billCardDetails.prevReading.toFixed(2)} / {billCardDetails.currReading.toFixed(2)} m³</span></div>
                   <div className="print-row"><span>Bulk usage:</span> <span>{billCardDetails.usage.toFixed(2)} m³</span></div>
@@ -683,8 +710,8 @@ export default function BulkMeterDetailsPage() {
               <div className="flex items-center gap-3">
                 <Gauge className="h-6 w-6 text-primary" />
                 <div className="flex-1">
-                  <CardTitle className="text-xl sm:text-2xl">{bulkMeter.name}</CardTitle>
-                  <CardDescription>Key: {bulkMeter.customerKeyNumber}</CardDescription>
+                  <CardTitle className="text-xl sm:text-2xl">{currentBulkMeter.name}</CardTitle>
+                  <CardDescription>Key: {currentBulkMeter.customerKeyNumber}</CardDescription>
                 </div>
               </div>
               <DropdownMenu>
@@ -719,13 +746,13 @@ export default function BulkMeterDetailsPage() {
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
                 <p><strong className="font-semibold">Branch:</strong> {displayBranchName ?? 'N/A'}</p>
-                <p><strong className="font-semibold">Sub-City:</strong> {bulkMeter.location ?? 'N/A'}, {bulkMeter.woreda ?? 'N/A'}</p>
-                <p><strong className="font-semibold">Specific Area:</strong> {bulkMeter.specificArea ?? 'N/A'}</p>
-                <p><strong className="font-semibold">Meter No:</strong> {bulkMeter.meterNumber ?? 'N/A'}</p>
-                <p><strong className="font-semibold">Meter Size:</strong> {bulkMeter.meterSize} inch</p>
-                {bulkMeter.xCoordinate && bulkMeter.yCoordinate && (
+                <p><strong className="font-semibold">Sub-City:</strong> {currentBulkMeter.location ?? 'N/A'}, {currentBulkMeter.woreda ?? 'N/A'}</p>
+                <p><strong className="font-semibold">Specific Area:</strong> {currentBulkMeter.specificArea ?? 'N/A'}</p>
+                <p><strong className="font-semibold">Meter No:</strong> {currentBulkMeter.meterNumber ?? 'N/A'}</p>
+                <p><strong className="font-semibold">Meter Size:</strong> {currentBulkMeter.meterSize} inch</p>
+                {currentBulkMeter.xCoordinate && currentBulkMeter.yCoordinate && (
                   <a
-                    href={`https://www.google.com/maps?q=${bulkMeter.yCoordinate},${bulkMeter.xCoordinate}`}
+                    href={`https://www.google.com/maps?q=${currentBulkMeter.yCoordinate},${currentBulkMeter.xCoordinate}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center text-primary hover:underline mt-1"
@@ -736,8 +763,8 @@ export default function BulkMeterDetailsPage() {
                 )}
               </div>
               <div>
-                <p><strong className="font-semibold">Contract No:</strong> {bulkMeter.contractNumber ?? 'N/A'}</p>
-                <p><strong className="font-semibold">Month:</strong> {bulkMeter.month ?? 'N/A'}</p>
+                <p><strong className="font-semibold">Contract No:</strong> {currentBulkMeter.contractNumber ?? 'N/A'}</p>
+                <p><strong className="font-semibold">Month:</strong> {currentBulkMeter.month ?? 'N/A'}</p>
                 <p><strong className="font-semibold">Billed Readings (Prev/Curr):</strong> {(bmPreviousReading).toFixed(2)} / {(bmCurrentReading).toFixed(2)}</p>
                 <p className="text-lg"><strong className="font-semibold">Bulk Usage:</strong> {bulkUsage.toFixed(2)} m³</p>
                 <p className="text-lg"><strong className="font-semibold">Total Individual Usage:</strong> {totalIndividualUsage.toFixed(2)} m³</p>
@@ -765,7 +792,7 @@ export default function BulkMeterDetailsPage() {
                 <p><strong className="font-semibold">Meter Rent:</strong> ETB {differenceBillBreakdown?.meterRent?.toFixed(2) ?? '0.00'}</p>
                 <p><strong className="font-semibold">VAT (15%):</strong> ETB {differenceBillBreakdown?.vatAmount?.toFixed(2) ?? '0.00'}</p>
                 <p className="text-base pt-1 border-t mt-1 font-semibold">Total Difference Bill: ETB {differenceBill.toFixed(2)}</p>
-                 <p className={cn("text-base font-semibold", bulkMeter.outStandingbill > 0 ? "text-destructive" : "text-muted-foreground")}>Outstanding Bill: ETB {bulkMeter.outStandingbill.toFixed(2)}</p>
+                 <p className={cn("text-base font-semibold", currentBulkMeter.outStandingbill > 0 ? "text-destructive" : "text-muted-foreground")}>Outstanding Bill: ETB {currentBulkMeter.outStandingbill.toFixed(2)}</p>
                  <p className="text-xl font-bold text-primary pt-1 border-t mt-1">Total Amount Payable: ETB {totalPayable.toFixed(2)}</p>
 
                 <Separator className="my-4"/>
@@ -821,13 +848,13 @@ export default function BulkMeterDetailsPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {paginatedReadingHistory.map(reading => (
-                                    <TableRow key={reading.id}>
-                                        <TableCell>{format(parseISO(reading.readingDate), "PP")}</TableCell>
-                                        <TableCell className="text-right">{reading.readingValue.toFixed(2)}</TableCell>
-                                        <TableCell className="text-xs text-muted-foreground">{reading.notes}</TableCell>
-                                    </TableRow>
-                                ))}
+                {paginatedReadingHistory.map(reading => (
+                  <TableRow key={reading.id}>
+                    <TableCell>{formatDateForDisplay(reading.readingDate)}</TableCell>
+                    <TableCell className="text-right">{reading.readingValue.toFixed(2)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{reading.notes}</TableCell>
+                  </TableRow>
+                ))}
                             </TableBody>
                         </Table>
                     ) : (
@@ -862,7 +889,7 @@ export default function BulkMeterDetailsPage() {
                 return (
                 <TableRow key={bill.id}>
                   <TableCell>{bill.monthYear}</TableCell>
-                  <TableCell>{format(parseISO(bill.billPeriodEndDate), "PP")}</TableCell>
+                  <TableCell>{formatDateForDisplay(bill.billPeriodEndDate)}</TableCell>
                   <TableCell className="text-right">{bill.previousReadingValue.toFixed(2)}</TableCell>
                   <TableCell className="text-right">{bill.currentReadingValue.toFixed(2)}</TableCell>
                   <TableCell>{displayUsage}</TableCell>
@@ -910,8 +937,8 @@ export default function BulkMeterDetailsPage() {
         </>
       )}
       
-      {bulkMeter && (<BulkMeterFormDialog open={isBulkMeterFormOpen} onOpenChange={setIsBulkMeterFormOpen} onSubmit={handleSubmitBulkMeterForm} defaultValues={bulkMeter}/> )}
-      {bulkMeter && (<AddReadingDialog open={isAddReadingOpen} onOpenChange={setIsAddReadingOpen} onSubmit={handleAddNewReading} meter={bulkMeter} />)}
+  {currentBulkMeter && (<BulkMeterFormDialog open={isBulkMeterFormOpen} onOpenChange={setIsBulkMeterFormOpen} onSubmit={handleSubmitBulkMeterForm} defaultValues={currentBulkMeter}/> )}
+  {currentBulkMeter && (<AddReadingDialog open={isAddReadingOpen} onOpenChange={setIsAddReadingOpen} onSubmit={handleAddNewReading} meter={currentBulkMeter} />)}
       <AlertDialog open={isBulkMeterDeleteDialogOpen} onOpenChange={setIsBulkMeterDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>Delete Bulk Meter?</AlertDialogTitle><AlertDialogDescription>This will permanently delete {bulkMeter?.name}. Associated customers will need reassignment.</AlertDialogDescription></AlertDialogHeader>
@@ -919,7 +946,7 @@ export default function BulkMeterDetailsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {selectedCustomer && (<IndividualCustomerFormDialog open={isCustomerFormOpen} onOpenChange={setIsCustomerFormOpen} onSubmit={handleSubmitCustomerForm} defaultValues={selectedCustomer} bulkMeters={[{customerKeyNumber: bulkMeter.customerKeyNumber, name: bulkMeter.name}]} />)}
+  {selectedCustomer && (<IndividualCustomerFormDialog open={isCustomerFormOpen} onOpenChange={setIsCustomerFormOpen} onSubmit={handleSubmitCustomerForm} defaultValues={selectedCustomer} bulkMeters={[{customerKeyNumber: currentBulkMeter.customerKeyNumber, name: currentBulkMeter.name}]} />)}
       <AlertDialog open={isCustomerDeleteDialogOpen} onOpenChange={setIsCustomerDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>Delete Customer?</AlertDialogTitle><AlertDialogDescription>This will permanently delete {customerToDelete?.name}.</AlertDialogDescription></AlertDialogHeader>

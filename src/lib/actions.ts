@@ -104,72 +104,81 @@ type KnowledgeBaseArticleUpdate = PublicTables['knowledge_base_articles']['Updat
 export type { RoleRow, PermissionRow, RolePermissionRow, Branch, BulkMeterRow, IndividualCustomer, StaffMember, Bill, IndividualCustomerReading, BulkMeterReading, Payment, ReportLog, NotificationRow, BranchInsert, BranchUpdate, BulkMeterInsert, BulkMeterUpdate, IndividualCustomerInsert, IndividualCustomerUpdate, StaffMemberInsert, StaffMemberUpdate, BillInsert, BillUpdate, IndividualCustomerReadingInsert, IndividualCustomerReadingUpdate, BulkMeterReadingInsert, BulkMeterReadingUpdate, PaymentInsert, PaymentUpdate, ReportLogInsert, ReportLogUpdate, NotificationInsert, TariffRow, TariffInsert, TariffUpdate, KnowledgeBaseArticleInsert, KnowledgeBaseArticleUpdate, KnowledgeBaseArticleRow };
 
 
-export async function getAllBranchesAction() { return dbGetAllBranches(); }
-export async function createBranchAction(branch: BranchInsert) { return dbCreateBranch(branch); }
-export async function updateBranchAction(id: string, branch: BranchUpdate) { return dbUpdateBranch(id, branch); }
-export async function deleteBranchAction(id: string) { return dbDeleteBranch(id); }
+const wrap = async <T>(fn: () => Promise<T>) => {
+  try {
+    const data = await fn();
+    return { data, error: null } as any;
+  } catch (e) {
+    return { data: null, error: e } as any;
+  }
+};
 
-export async function getAllCustomersAction() { return dbGetAllCustomers(); }
-export async function createCustomerAction(customer: IndividualCustomerInsert) { return dbCreateCustomer(customer); }
-export async function updateCustomerAction(customerKeyNumber: string, customer: IndividualCustomerUpdate) { return dbUpdateCustomer(customerKeyNumber, customer); }
-export async function deleteCustomerAction(customerKeyNumber: string) { return dbDeleteCustomer(customerKeyNumber); }
+export async function getAllBranchesAction() { return await wrap(() => dbGetAllBranches()); }
+export async function createBranchAction(branch: BranchInsert) { return await wrap(() => dbCreateBranch(branch)); }
+export async function updateBranchAction(id: string, branch: BranchUpdate) { return await wrap(() => dbUpdateBranch(id, branch)); }
+export async function deleteBranchAction(id: string) { return await wrap(() => dbDeleteBranch(id)); }
 
-export async function getAllBulkMetersAction() { return dbGetAllBulkMeters(); }
-export async function createBulkMeterAction(bulkMeter: BulkMeterInsert) { return dbCreateBulkMeter(bulkMeter); }
-export async function updateBulkMeterAction(customerKeyNumber: string, bulkMeter: BulkMeterUpdate) { return dbUpdateBulkMeter(customerKeyNumber, bulkMeter); }
-export async function deleteBulkMeterAction(customerKeyNumber: string) { return dbDeleteBulkMeter(customerKeyNumber); }
+export async function getAllCustomersAction() { return await wrap(() => dbGetAllCustomers()); }
+export async function createCustomerAction(customer: IndividualCustomerInsert) { return await wrap(() => dbCreateCustomer(customer)); }
+export async function updateCustomerAction(customerKeyNumber: string, customer: IndividualCustomerUpdate) { return await wrap(() => dbUpdateCustomer(customerKeyNumber, customer)); }
+export async function deleteCustomerAction(customerKeyNumber: string) { return await wrap(() => dbDeleteCustomer(customerKeyNumber)); }
 
-export async function getAllStaffMembersAction() { return dbGetAllStaffMembers(); }
-export async function createStaffMemberAction(staffMember: StaffMemberInsert) { return dbCreateStaffMember(staffMember); }
-export async function updateStaffMemberAction(email: string, staffMember: StaffMemberUpdate) { return dbUpdateStaffMember(email, staffMember); }
-export async function deleteStaffMemberAction(email: string) { return dbDeleteStaffMember(email); }
-export async function getStaffMemberForAuthAction(email: string, password?: string) { return dbGetStaffMemberForAuth(email, password); }
+export async function getAllBulkMetersAction() { return await wrap(() => dbGetAllBulkMeters()); }
+export async function createBulkMeterAction(bulkMeter: BulkMeterInsert) { return await wrap(() => dbCreateBulkMeter(bulkMeter)); }
+export async function updateBulkMeterAction(customerKeyNumber: string, bulkMeter: BulkMeterUpdate) { return await wrap(() => dbUpdateBulkMeter(customerKeyNumber, bulkMeter)); }
+export async function deleteBulkMeterAction(customerKeyNumber: string) { return await wrap(() => dbDeleteBulkMeter(customerKeyNumber)); }
 
-export async function getAllBillsAction() { return dbGetAllBills(); }
-export async function createBillAction(bill: BillInsert) { return dbCreateBill(bill); }
-export async function updateBillAction(id: string, bill: BillUpdate) { return dbUpdateBill(id, bill); }
-export async function deleteBillAction(id: string) { return dbDeleteBill(id); }
+export async function getAllStaffMembersAction() { return await wrap(() => dbGetAllStaffMembers()); }
+export async function createStaffMemberAction(staffMember: StaffMemberInsert) { return await wrap(() => dbCreateStaffMember(staffMember)); }
+export async function updateStaffMemberAction(email: string, staffMember: StaffMemberUpdate) { return await wrap(() => dbUpdateStaffMember(email, staffMember)); }
+export async function deleteStaffMemberAction(email: string) { return await wrap(() => dbDeleteStaffMember(email)); }
+export async function getStaffMemberForAuthAction(email: string, password?: string) { return await wrap(() => dbGetStaffMemberForAuth(email, password)); }
 
-export async function getAllIndividualCustomerReadingsAction() { return dbGetAllIndividualCustomerReadings(); }
-export async function createIndividualCustomerReadingAction(reading: IndividualCustomerReadingInsert) { return dbCreateIndividualCustomerReading(reading); }
-export async function updateIndividualCustomerReadingAction(id: string, reading: IndividualCustomerReadingUpdate) { return dbUpdateIndividualCustomerReading(id, reading); }
-export async function deleteIndividualCustomerReadingAction(id: string) { return dbDeleteIndividualCustomerReading(id); }
+export async function getAllBillsAction() { return await wrap(() => dbGetAllBills()); }
+export async function createBillAction(bill: BillInsert) { return await wrap(() => dbCreateBill(bill)); }
+export async function updateBillAction(id: string, bill: BillUpdate) { return await wrap(() => dbUpdateBill(id, bill)); }
+export async function deleteBillAction(id: string) { return await wrap(() => dbDeleteBill(id)); }
 
-export async function getAllBulkMeterReadingsAction() { return dbGetAllBulkMeterReadings(); }
-export async function createBulkMeterReadingAction(reading: BulkMeterReadingInsert) { return dbCreateBulkMeterReading(reading); }
-export async function updateBulkMeterReadingAction(id: string, reading: BulkMeterReadingUpdate) { return dbUpdateBulkMeterReading(id, reading); }
-export async function deleteBulkMeterReadingAction(id: string) { return dbDeleteBulkMeterReading(id); }
+export async function getAllIndividualCustomerReadingsAction() { return await wrap(() => dbGetAllIndividualCustomerReadings()); }
+export async function createIndividualCustomerReadingAction(reading: IndividualCustomerReadingInsert) { return await wrap(() => dbCreateIndividualCustomerReading(reading)); }
+export async function updateIndividualCustomerReadingAction(id: string, reading: IndividualCustomerReadingUpdate) { return await wrap(() => dbUpdateIndividualCustomerReading(id, reading)); }
+export async function deleteIndividualCustomerReadingAction(id: string) { return await wrap(() => dbDeleteIndividualCustomerReading(id)); }
 
-export async function getAllPaymentsAction() { return dbGetAllPayments(); }
-export async function createPaymentAction(payment: PaymentInsert) { return dbCreatePayment(payment); }
-export async function updatePaymentAction(id: string, payment: PaymentUpdate) { return dbUpdatePayment(id, payment); }
-export async function deletePaymentAction(id: string) { return dbDeletePayment(id); }
+export async function getAllBulkMeterReadingsAction() { return await wrap(() => dbGetAllBulkMeterReadings()); }
+export async function createBulkMeterReadingAction(reading: BulkMeterReadingInsert) { return await wrap(() => dbCreateBulkMeterReading(reading)); }
+export async function updateBulkMeterReadingAction(id: string, reading: BulkMeterReadingUpdate) { return await wrap(() => dbUpdateBulkMeterReading(id, reading)); }
+export async function deleteBulkMeterReadingAction(id: string) { return await wrap(() => dbDeleteBulkMeterReading(id)); }
 
-export async function getAllReportLogsAction() { return dbGetAllReportLogs(); }
-export async function createReportLogAction(log: ReportLogInsert) { return dbCreateReportLog(log); }
-export async function updateReportLogAction(id: string, log: ReportLogUpdate) { return dbUpdateReportLog(id, log); }
-export async function deleteReportLogAction(id: string) { return dbDeleteReportLog(id); }
+export async function getAllPaymentsAction() { return await wrap(() => dbGetAllPayments()); }
+export async function createPaymentAction(payment: PaymentInsert) { return await wrap(() => dbCreatePayment(payment)); }
+export async function updatePaymentAction(id: string, payment: PaymentUpdate) { return await wrap(() => dbUpdatePayment(id, payment)); }
+export async function deletePaymentAction(id: string) { return await wrap(() => dbDeletePayment(id)); }
 
-export async function getAllNotificationsAction() { return dbGetAllNotifications(); }
-export async function createNotificationAction(notification: NotificationInsert) { return dbCreateNotification(notification); }
+export async function getAllReportLogsAction() { return await wrap(() => dbGetAllReportLogs()); }
+export async function createReportLogAction(log: ReportLogInsert) { return await wrap(() => dbCreateReportLog(log)); }
+export async function updateReportLogAction(id: string, log: ReportLogUpdate) { return await wrap(() => dbUpdateReportLog(id, log)); }
+export async function deleteReportLogAction(id: string) { return await wrap(() => dbDeleteReportLog(id)); }
 
-export async function getAllRolesAction() { return dbGetAllRoles(); }
-export async function getAllPermissionsAction() { return dbGetAllPermissions(); }
-export async function getAllRolePermissionsAction() { return dbGetAllRolePermissions(); }
+export async function getAllNotificationsAction() { return await wrap(() => dbGetAllNotifications()); }
+export async function createNotificationAction(notification: NotificationInsert) { return await wrap(() => dbCreateNotification(notification)); }
+
+export async function getAllRolesAction() { return await wrap(() => dbGetAllRoles()); }
+export async function getAllPermissionsAction() { return await wrap(() => dbGetAllPermissions()); }
+export async function getAllRolePermissionsAction() { return await wrap(() => dbGetAllRolePermissions()); }
 
 export async function rpcUpdateRolePermissionsAction(roleId: number, permissionIds: number[]) {
-    return dbRpcUpdateRolePermissions(roleId, permissionIds);
+  return await wrap(() => dbRpcUpdateRolePermissions(roleId, permissionIds));
 }
 
 
-export async function getAllTariffsAction() { return dbGetAllTariffs(); }
-export async function createTariffAction(tariff: TariffInsert) { return dbCreateTariff(tariff); }
-export async function updateTariffAction(customerType: string, year: number, tariff: TariffUpdate) { 
-    return dbUpdateTariff(customerType, year, tariff);
+export async function getAllTariffsAction() { return await wrap(() => dbGetAllTariffs()); }
+export async function createTariffAction(tariff: TariffInsert) { return await wrap(() => dbCreateTariff(tariff)); }
+export async function updateTariffAction(customerType: string, year: number, tariff: TariffUpdate) {
+  return await wrap(() => dbUpdateTariff(customerType, year, tariff));
 }
 
-export async function getAllKnowledgeBaseArticlesAction() { return dbGetAllKnowledgeBaseArticles(); }
-export async function createKnowledgeBaseArticleAction(article: KnowledgeBaseArticleInsert) { return dbCreateKnowledgeBaseArticle(article); }
-export async function updateKnowledgeBaseArticleAction(id: number, article: KnowledgeBaseArticleUpdate) { return dbUpdateKnowledgeBaseArticle(id, article); }
-export async function deleteKnowledgeBaseArticleAction(id: number) { return dbDeleteKnowledgeBaseArticle(id); }
+export async function getAllKnowledgeBaseArticlesAction() { return await wrap(() => dbGetAllKnowledgeBaseArticles()); }
+export async function createKnowledgeBaseArticleAction(article: KnowledgeBaseArticleInsert) { return await wrap(() => dbCreateKnowledgeBaseArticle(article)); }
+export async function updateKnowledgeBaseArticleAction(id: number, article: KnowledgeBaseArticleUpdate) { return await wrap(() => dbUpdateKnowledgeBaseArticle(id, article)); }
+export async function deleteKnowledgeBaseArticleAction(id: number) { return await wrap(() => dbDeleteKnowledgeBaseArticle(id)); }
 

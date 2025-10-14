@@ -83,14 +83,15 @@ const sidebarVariants = cva(
       },
       collapsible: {
         true: "",
-        false: ""
+        false: "",
+        icon: ""
       }
     },
     compoundVariants: [
        {
-        collapsible: "icon" as unknown as boolean, 
+        collapsible: "icon",
         state: "collapsed",
-        className: "w-16", 
+        className: "w-16",
       },
     ],
     defaultVariants: {
@@ -102,7 +103,7 @@ const sidebarVariants = cva(
 
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof sidebarVariants> {
-    collapsible?: "icon" | boolean;
+  collapsible?: boolean | 'icon';
 }
 
 const Sidebar = React.forwardRef<HTMLDivElement, SidebarProps>(

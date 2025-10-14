@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Branch, BranchStatus } from "./branch-types";
 
-const branchStatuses: BranchStatus[] = ['Active', 'Inactive'];
+const branchStatuses = ['Active', 'Inactive'] as const;
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "Branch name must be at least 2 characters." }),
@@ -52,7 +52,7 @@ export function BranchFormDialog({ open, onOpenChange, onSubmit, defaultValues }
       location: "",
       contactPerson: "",
       contactPhone: "",
-      status: undefined,
+      status: undefined as any,
     },
   });
 

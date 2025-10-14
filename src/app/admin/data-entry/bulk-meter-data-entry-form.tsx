@@ -137,9 +137,11 @@ export function BulkMeterDataEntryForm() {
                         <SelectContent>
                           <SelectItem value={BRANCH_UNASSIGNED_VALUE}>None</SelectItem>
                           {availableBranches.map((branch) => (
-                            <SelectItem key={branch.id} value={branch.id}>
-                              {branch.name}
-                            </SelectItem>
+                            branch?.id ? (
+                              <SelectItem key={branch.id} value={branch.id}>
+                                {branch.name}
+                              </SelectItem>
+                            ) : null
                           ))}
                         </SelectContent>
                       </Select>
@@ -203,7 +205,7 @@ export function BulkMeterDataEntryForm() {
                         </FormControl>
                         <SelectContent>
                           {meterSizeOptions.map(option => (
-                            <SelectItem key={option.value} value={option.value}>
+                            <SelectItem key={String(option.value)} value={String(option.value)}>
                               {option.label}
                             </SelectItem>
                           ))}
@@ -315,7 +317,7 @@ export function BulkMeterDataEntryForm() {
                         </FormControl>
                         <SelectContent>
                           {subCityOptions.map(option => (
-                            <SelectItem key={option} value={option}>
+                            <SelectItem key={String(option)} value={String(option)}>
                               {option}
                             </SelectItem>
                           ))}
@@ -339,7 +341,7 @@ export function BulkMeterDataEntryForm() {
                         </FormControl>
                         <SelectContent>
                           {woredaOptions.map(option => (
-                            <SelectItem key={option} value={option}>
+                            <SelectItem key={String(option)} value={String(option)}>
                               {option}
                             </SelectItem>
                           ))}
@@ -367,7 +369,7 @@ export function BulkMeterDataEntryForm() {
                         </FormControl>
                         <SelectContent>
                           {customerTypes.map((type) => (
-                            <SelectItem key={type} value={type}>
+                            <SelectItem key={String(type)} value={String(type)}>
                               {type}
                             </SelectItem>
                           ))}
@@ -395,7 +397,7 @@ export function BulkMeterDataEntryForm() {
                         </FormControl>
                         <SelectContent>
                           {sewerageConnections.map((type) => (
-                            <SelectItem key={type} value={type}>
+                            <SelectItem key={String(type)} value={String(type)}>
                               {type}
                             </SelectItem>
                           ))}

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
@@ -32,6 +33,9 @@ import { format, parseISO, lastDayOfMonth } from "date-fns";
 import type { Branch } from "@/app/admin/branches/branch-types";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { Separator } from "@/components/ui/separator";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
+import { arrayToXlsxBlob, downloadFile } from "@/lib/xlsx";
 
 interface UserAuth {
   id?: string;
@@ -90,6 +94,7 @@ export default function StaffBulkMeterDetailsPage() {
 
   const [showSlip, setShowSlip] = React.useState(false);
   const [isPrinting, setIsPrinting] = React.useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false);
 
   // Pagination states
   const [readingHistoryPage, setReadingHistoryPage] = React.useState(0);
@@ -153,12 +158,14 @@ export default function StaffBulkMeterDetailsPage() {
       differenceUsage += 1;
     }
   
-    const { totalBill: differenceBill, ...differenceBillBreakdown } = await calculateBill(differenceUsage, effectiveBulkMeterCustomerType, effectiveBulkMeterSewerageConnection, currentBulkMeter.meterSize, billingMonth);
-  
-    const totalPayable = differenceBill + outStandingBillValue;
-    const paymentStatus = totalPayable > 0.01 ? 'Unpaid' : 'Paid';
-  
-    const displayBranchName = currentBulkMeter.branchId ? currentBranches.find(b => b.id === currentBulkMeter.branchId)?.name : currentBulkMeter.subCity;
+  const differenceFull = await calculateBill(differenceUsage, effectiveBulkMeterCustomerType, effectiveBulkMeterSewerageConnection, currentBulkMeter.meterSize, billingMonth);
+  const differenceBill = differenceFull.totalBill;
+  const differenceBillBreakdown = differenceFull;
+
+  const totalPayable = differenceBill + outStandingBillValue;
+  const paymentStatus: PaymentStatus = totalPayable > 0.01 ? 'Unpaid' : 'Paid';
+
+  const displayBranchName = currentBulkMeter.branchId ? (currentBranches.find(b => b.id === currentBulkMeter.branchId)?.name ?? currentBulkMeter.subCity ?? "N/A") : (currentBulkMeter.subCity ?? "N/A");
   
     const billToRender = currentBillForPrintView || (currentBillingHistory.length > 0 ? currentBillingHistory[0] : null);
   
@@ -484,6 +491,77 @@ export default function StaffBulkMeterDetailsPage() {
       setIsPrinting(true);
     }
   };
+
+  const handleDownloadPdf = async () => {
+    if (!bulkMeter || isGeneratingPdf) return;
+
+    const slipElement = document.getElementById('printable-bill-card-content');
+    if (!slipElement) {
+        toast({ title: "Error", description: "Could not find the bill slip content to download.", variant: "destructive" });
+        return;
+    }
+
+    setIsGeneratingPdf(true);
+
+    try {
+        const canvas = await html2canvas(slipElement, { scale: 2 });
+        const imgData = canvas.toDataURL('image/png');
+        
+        const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'px',
+            format: [canvas.width, canvas.height]
+        });
+
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        
+        const fileName = `payslip-${bulkMeter.customerKeyNumber}-${billForPrintView?.monthYear || 'current'}.pdf`;
+        pdf.save(fileName);
+
+        toast({ title: "PDF Generated", description: `Successfully downloaded ${fileName}.` });
+    } catch (error) {
+        console.error("Error generating PDF:", error);
+        toast({ title: "PDF Generation Failed", description: "An unexpected error occurred while generating the PDF.", variant: "destructive" });
+    } finally {
+        setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadXlsx = () => {
+    if (!bulkMeter || !billCardDetails) return;
+
+    const headers = ['Description', 'Value'];
+    const data = [
+        { 'Description': 'Bulk meter name', 'Value': bulkMeter.name },
+        { 'Description': 'Customer key number', 'Value': bulkMeter.customerKeyNumber },
+        { 'Description': 'Contract No', 'Value': bulkMeter.contractNumber ?? 'N/A' },
+        { 'Description': 'Branch', 'Value': displayBranchName ?? 'N/A' },
+        { 'Description': 'Sub-City', 'Value': bulkMeter.location },
+        { 'Description': 'Bulk Meter Category', 'Value': bulkMeter.chargeGroup },
+        { 'Description': 'Sewerage Connection', 'Value': bulkMeter.sewerageConnection },
+        { 'Description': 'Number of Assigned Individual Customers', 'Value': associatedCustomers.length },
+        { 'Description': 'Previous and current reading', 'Value': `${billCardDetails.prevReading.toFixed(2)} / ${billCardDetails.currReading.toFixed(2)} m³` },
+        { 'Description': 'Bulk usage', 'Value': `${billCardDetails.usage.toFixed(2)} m³` },
+        { 'Description': 'Total Individual Usage', 'Value': `${totalIndividualUsage.toFixed(2)} m³` },
+        { 'Description': 'Base Water Charge', 'Value': `ETB ${billCardDetails.baseWaterCharge.toFixed(2)}` },
+        { 'Description': 'Maintenance Fee', 'Value': `ETB ${billCardDetails.maintenanceFee.toFixed(2)}` },
+        { 'Description': 'Sanitation Fee', 'Value': `ETB ${billCardDetails.sanitationFee.toFixed(2)}` },
+        { 'Description': 'Sewerage Fee', 'Value': `ETB ${billCardDetails.sewerageCharge.toFixed(2)}` },
+        { 'Description': 'Meter Rent', 'Value': `ETB ${billCardDetails.meterRent.toFixed(2)}` },
+        { 'Description': 'VAT (15%)', 'Value': `ETB ${billCardDetails.vatAmount.toFixed(2)}` },
+        { 'Description': 'Difference usage', 'Value': `${billCardDetails.differenceUsage.toFixed(2)} m³` },
+        { 'Description': 'Total Difference bill', 'Value': `ETB ${billCardDetails.totalDifferenceBill.toFixed(2)}` },
+        { 'Description': 'Outstanding Bill (Previous Balance)', 'Value': `ETB ${billCardDetails.outstandingBill.toFixed(2)}` },
+        { 'Description': 'Total Amount Payable', 'Value': `ETB ${billCardDetails.totalPayable.toFixed(2)}` },
+        { 'Description': 'Paid/Unpaid', 'Value': billCardDetails.paymentStatus },
+        { 'Description': 'Month', 'Value': billCardDetails.month },
+    ];
+
+    const blob = arrayToXlsxBlob(data, headers);
+    const fileName = `payslip-${bulkMeter.customerKeyNumber}-${billForPrintView?.monthYear || 'current'}.xlsx`;
+    downloadFile(blob, fileName);
+    toast({ title: "XLSX Generated", description: `Successfully downloaded ${fileName}.` });
+  };
   
   React.useEffect(() => {
     if (isPrinting) {
@@ -643,11 +721,31 @@ export default function StaffBulkMeterDetailsPage() {
          <Card className="printable-bill-card-wrapper">
           <CardHeader className="non-printable flex flex-row items-center justify-between">
             <CardTitle>Pay Slip Preview</CardTitle>
-            <Button variant="ghost" size="icon" onClick={() => setShowSlip(false)}>
-              <XCircle className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-2">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" disabled={isGeneratingPdf}>
+                            <Printer className="mr-2 h-4 w-4" />
+                            Download Report
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={handleDownloadPdf} disabled={isGeneratingPdf}>
+                            {isGeneratingPdf ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <div className="mr-2 h-4 w-4" />}
+                            Download as PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleDownloadXlsx}>
+                            <div className="mr-2 h-4 w-4" />
+                            Download as XLSX
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="ghost" size="icon" onClick={() => setShowSlip(false)}>
+                    <XCircle className="h-5 w-5" />
+                </Button>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent id="printable-bill-card-content">
             <div className="printable-bill-card">
                <div className="print-header">
                 <div className="print-header-top">
@@ -885,13 +983,42 @@ export default function StaffBulkMeterDetailsPage() {
           <Card className="shadow-lg non-printable">
             <CardHeader><CardTitle className="flex items-center gap-2"><ListCollapse className="h-5 w-5 text-primary" />Billing History</CardTitle><CardDescription>Historical bills generated for this meter.</CardDescription></CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">{billingHistory.length > 0 ? (<Table><TableHeader><TableRow><TableHead>Month</TableHead><TableHead>Date Billed</TableHead><TableHead className="text-right">Prev. Reading</TableHead><TableHead className="text-right">Curr. Reading</TableHead><TableHead>Usage (m³)</TableHead><TableHead>Diff. Usage (m³)</TableHead><TableHead className="text-right">Outstanding (ETB)</TableHead><TableHead className="text-right">Current Bill (ETB)</TableHead><TableHead className="text-right">Total Payable (ETB)</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{paginatedBillingHistory.map(bill => {
+              {/* Mobile View: List of Cards */}
+              <div className="md:hidden">
+                {billingHistory.length > 0 ? paginatedBillingHistory.map((bill, _billIndex) => {
+                  const usageForBill = bill.usageM3 ?? (bill.currentReadingValue - bill.previousReadingValue);
+                  const displayUsage = !isNaN(usageForBill) ? usageForBill.toFixed(2) : "N/A";
+                  return (
+                    <div key={bill.id ?? `${bill.monthYear}-${String(bill.billPeriodEndDate)}-${_billIndex}`} className="border-b p-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-bold">{bill.monthYear}</p>
+                          <p className="text-sm text-muted-foreground">Billed: {format(parseISO(bill.billPeriodEndDate), "PP")}</p>
+                        </div>
+                        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handlePrintSlip(bill)}><Printer className="mr-2 h-4 w-4" />Print/Export Bill</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteBillingRecord(bill)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Record</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-sm">
+                        <p>Usage:</p><p className="text-right font-medium">{displayUsage} m³</p>
+                        <p>Outstanding:</p><p className="text-right font-medium">{(bill.balanceCarriedForward ?? 0).toFixed(2)} ETB</p>
+                        <p>Current Bill:</p><p className="text-right font-medium">{bill.totalAmountDue.toFixed(2)} ETB</p>
+                        <p className="font-bold">Total Payable:</p><p className="text-right font-bold">{((bill.balanceCarriedForward ?? 0) + bill.totalAmountDue).toFixed(2)} ETB</p>
+                      </div>
+                      <div className="mt-2">
+                        <Badge variant={bill.paymentStatus === 'Paid' ? 'default' : 'destructive'}>{bill.paymentStatus}</Badge>
+                      </div>
+                    </div>
+                  );
+                }) : <p className="text-muted-foreground text-sm text-center py-4">No billing history found.</p>}
+              </div>
+
+              {/* Desktop View: Table */}
+              <div className="overflow-x-auto hidden md:block">{billingHistory.length > 0 ? (<Table><TableHeader><TableRow><TableHead>Month</TableHead><TableHead>Date Billed</TableHead><TableHead className="text-right">Prev. Reading</TableHead><TableHead className="text-right">Curr. Reading</TableHead><TableHead>Usage (m³)</TableHead><TableHead>Diff. Usage (m³)</TableHead><TableHead className="text-right">Outstanding (ETB)</TableHead><TableHead className="text-right">Current Bill (ETB)</TableHead><TableHead className="text-right">Total Payable (ETB)</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{paginatedBillingHistory.map((bill, _billIndex) => {
                 const usageForBill = bill.usageM3 ?? (bill.currentReadingValue - bill.previousReadingValue);
                 const displayUsage = !isNaN(usageForBill) ? usageForBill.toFixed(2) : "N/A";
                 const diffUsageValue = bill.differenceUsage ?? (usageForBill - (associatedCustomers.reduce((sum, cust) => sum + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0)));
                 const displayDiffUsage = !isNaN(diffUsageValue) ? diffUsageValue.toFixed(2) : 'N/A';
                 return (
-                <TableRow key={bill.id}>
+                <TableRow key={bill.id ?? `${bill.monthYear}-${String(bill.billPeriodEndDate)}-${_billIndex}`}>
                   <TableCell>{bill.monthYear}</TableCell>
                   <TableCell>{format(parseISO(bill.billPeriodEndDate), "PP")}</TableCell>
                   <TableCell className="text-right">{bill.previousReadingValue.toFixed(2)}</TableCell>
@@ -904,7 +1031,7 @@ export default function StaffBulkMeterDetailsPage() {
                   <TableCell><Badge variant={bill.paymentStatus === 'Paid' ? 'default' : 'destructive'}>{bill.paymentStatus}</Badge></TableCell>
                   <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handlePrintSlip(bill)}><Printer className="mr-2 h-4 w-4" />Print/Export Bill</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteBillingRecord(bill)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Record</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell>
                 </TableRow>
-              )})}</TableBody></Table>) : (<p className="text-muted-foreground text-sm text-center py-4">No billing history found.</p>)}</div>
+              )})}</TableBody></Table>) : (<p className="text-muted-foreground text-sm text-center py-4 md:block hidden">No billing history found.</p>)}</div>
             </CardContent>
             {billingHistory.length > 0 && (
               <TablePagination

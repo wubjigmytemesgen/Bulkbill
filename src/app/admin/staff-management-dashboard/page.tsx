@@ -157,8 +157,8 @@ export default function StaffManagementDashboardPage() {
     const pendingBulkMetersCount = branchBMs.filter(bm => bm.status === 'Pending Approval').length;
     const totalPendingApprovals = pendingCustomersCount + pendingBulkMetersCount;
 
-    const paidCount = branchBMs.filter(bm => bm.paymentStatus === 'Paid').length + activeCustomers.filter(c => c.paymentStatus === 'Paid').length;
-    const unpaidCount = branchBMs.filter(bm => bm.paymentStatus === 'Unpaid').length + activeCustomers.filter(c => c.paymentStatus === 'Unpaid' || c.paymentStatus === 'Pending').length;
+    const paidCount = branchBMs.filter(bm => bm.paymentStatus === 'Paid').length;
+    const unpaidCount = branchBMs.filter(bm => bm.paymentStatus === 'Unpaid').length;
     const totalBillsCount = paidCount + unpaidCount;
     const billsData = [
         { name: 'Paid', value: paidCount, fill: 'hsl(var(--chart-1))' },

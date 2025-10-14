@@ -50,11 +50,23 @@ export function BillTable({ bills, customers, bulkMeters, branches }: BillTableP
     return branch ? branch.name : "Unknown";
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (value: string | Date | number | null | undefined) => {
+    if (!value) return '-';
     try {
-      return format(parseISO(dateString), "PP"); // e.g., Sep 21, 2023
+      let d: Date;
+      if (typeof value === 'string') {
+        if (isNaN(Date.parse(value))) return String(value);
+        d = parseISO(value);
+      } else if (typeof value === 'number') {
+        d = new Date(value);
+      } else if (value instanceof Date) {
+        d = value;
+      } else {
+        d = parseISO(String(value));
+      }
+      return format(d, 'PP');
     } catch (e) {
-      return dateString; // Fallback if parsing fails
+      try { return String(value); } catch { return '-'; }
     }
   };
 
@@ -85,12 +97,18 @@ export function BillTable({ bills, customers, bulkMeters, branches }: BillTableP
                 <TableCell>{getCustomerKey(bill)}</TableCell>
                 <TableCell>{getBranchName(bill)}</TableCell>
                 <TableCell>{bill.monthYear}</TableCell>
-                <TableCell className="text-right">{bill.previousReadingValue.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{bill.currentReadingValue.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{(bill.usageM3 ?? (bill.currentReadingValue - bill.previousReadingValue)).toFixed(2)}</TableCell>
-                <TableCell className="text-right">{bill.differenceUsage?.toFixed(2) ?? '-'}</TableCell>
-                <TableCell className="text-right">{(bill.balanceCarriedForward ?? 0).toFixed(2)}</TableCell>
-                <TableCell className="text-right font-mono">{((bill.totalAmountDue ?? 0) + (bill.balanceCarriedForward ?? 0)).toFixed(2)}</TableCell>
+        <TableCell className="text-right">{typeof bill.previousReadingValue === 'number' ? bill.previousReadingValue.toFixed(2) : '-'}</TableCell>
+        <TableCell className="text-right">{typeof bill.currentReadingValue === 'number' ? bill.currentReadingValue.toFixed(2) : '-'}</TableCell>
+        <TableCell className="text-right">{(() => {
+          const usage = typeof bill.usageM3 === 'number' ? bill.usageM3 : (typeof bill.currentReadingValue === 'number' && typeof bill.previousReadingValue === 'number' ? bill.currentReadingValue - bill.previousReadingValue : null);
+          return usage !== null ? usage.toFixed(2) : '-';
+        })()}</TableCell>
+        <TableCell className="text-right">{typeof bill.differenceUsage === 'number' ? bill.differenceUsage.toFixed(2) : '-'}</TableCell>
+        <TableCell className="text-right">{typeof bill.balanceCarriedForward === 'number' ? bill.balanceCarriedForward.toFixed(2) : '0.00'}</TableCell>
+        <TableCell className="text-right font-mono">{(() => {
+          const total = (typeof bill.totalAmountDue === 'number' ? bill.totalAmountDue : 0) + (typeof bill.balanceCarriedForward === 'number' ? bill.balanceCarriedForward : 0);
+          return total.toFixed(2);
+        })()}</TableCell>
                 <TableCell>{formatDate(bill.dueDate)}</TableCell>
                 <TableCell>
                    <Badge variant={bill.paymentStatus === 'Paid' ? 'default' : 'destructive'} className={cn(bill.paymentStatus === 'Paid' && "bg-green-500 hover:bg-green-600")}>

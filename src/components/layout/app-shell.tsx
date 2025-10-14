@@ -146,7 +146,7 @@ export function AppShell({ user, userRole, sidebar, children }: { user: UserProf
   
   return (
     <SidebarProvider defaultOpen>
-      <Sidebar side="left" variant="sidebar" collapsible="icon" className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+  <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
         <SidebarHeader className="p-2">
         </SidebarHeader>
         <SidebarContent>

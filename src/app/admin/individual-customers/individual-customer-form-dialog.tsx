@@ -232,9 +232,11 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
                             <SelectContent>
                             <SelectItem value={BRANCH_UNASSIGNED_VALUE}>None</SelectItem>
                             {availableBranches.map((branch) => (
-                                <SelectItem key={branch.id} value={branch.id}>
-                                {branch.name}
-                                </SelectItem>
+                                branch.id && String(branch.id).trim() !== "" ? (
+                                  <SelectItem key={String(branch.id)} value={String(branch.id)}>
+                                    {branch.name}
+                                  </SelectItem>
+                                ) : null
                             ))}
                             </SelectContent>
                         </Select>
@@ -267,9 +269,11 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
                             </SelectItem>
                         )}
                         {dynamicBulkMeters.map((bm) => (
-                            <SelectItem key={bm.customerKeyNumber} value={bm.customerKeyNumber}>
-                            {bm.name}
-                            </SelectItem>
+                            bm.customerKeyNumber && String(bm.customerKeyNumber).trim() !== "" ? (
+                              <SelectItem key={String(bm.customerKeyNumber)} value={String(bm.customerKeyNumber)}>
+                                {bm.name}
+                              </SelectItem>
+                            ) : null
                         ))}
                         </SelectContent>
                     </Select>
@@ -302,9 +306,11 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
                       </FormControl>
                       <SelectContent>
                         {meterSizeOptions.map(option => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
+                          option.value !== undefined && String(option.value).trim() !== "" ? (
+                            <SelectItem key={String(option.value)} value={String(option.value)}>
+                              {option.label}
+                            </SelectItem>
+                          ) : null
                         ))}
                       </SelectContent>
                     </Select>
@@ -337,9 +343,11 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
                         </FormControl>
                         <SelectContent>
                           {subCityOptions.map(option => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
+                            option !== undefined && String(option).trim() !== "" ? (
+                              <SelectItem key={String(option)} value={String(option)}>
+                                {option}
+                              </SelectItem>
+                            ) : null
                           ))}
                         </SelectContent>
                       </Select>
@@ -361,9 +369,11 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
                         </FormControl>
                         <SelectContent>
                           {woredaOptions.map(option => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
+                            option !== undefined && String(option).trim() !== "" ? (
+                              <SelectItem key={String(option)} value={String(option)}>
+                                {option}
+                              </SelectItem>
+                            ) : null
                           ))}
                         </SelectContent>
                       </Select>
@@ -372,12 +382,12 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
                   )}
                 />
 
-              <FormField control={form.control} name="sewerageConnection" render={({ field }) => (<FormItem><FormLabel>Sewerage Conn. <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select connection" /></SelectTrigger></FormControl><SelectContent>{sewerageConnections.map(conn => <SelectItem key={conn} value={conn}>{conn}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="sewerageConnection" render={({ field }) => (<FormItem><FormLabel>Sewerage Conn. <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select connection" /></SelectTrigger></FormControl><SelectContent>{sewerageConnections.map(conn => (conn !== undefined && String(conn).trim() !== "" ? <SelectItem key={String(conn)} value={String(conn)}>{conn}</SelectItem> : null))}</SelectContent></Select><FormMessage /></FormItem>)} />
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField control={form.control} name="status" render={({ field }) => (<FormItem><FormLabel>Customer Status <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select status"/></SelectTrigger></FormControl><SelectContent>{individualCustomerStatuses.map(status => (<SelectItem key={status} value={status}>{status}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="paymentStatus" render={({ field }) => (<FormItem><FormLabel>Payment Status <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select payment status"/></SelectTrigger></FormControl><SelectContent>{paymentStatuses.map(status => (<SelectItem key={status} value={status}>{status}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="status" render={({ field }) => (<FormItem><FormLabel>Customer Status <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select status"/></SelectTrigger></FormControl><SelectContent>{individualCustomerStatuses.map(status => (status !== undefined && String(status).trim() !== "" ? <SelectItem key={String(status)} value={String(status)}>{status}</SelectItem> : null))}</SelectContent></Select><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="paymentStatus" render={({ field }) => (<FormItem><FormLabel>Payment Status <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select payment status"/></SelectTrigger></FormControl><SelectContent>{paymentStatuses.map(status => (status !== undefined && String(status).trim() !== "" ? <SelectItem key={String(status)} value={String(status)}>{status}</SelectItem> : null))}</SelectContent></Select><FormMessage /></FormItem>)} />
             </div>
 
             <DialogFooter>

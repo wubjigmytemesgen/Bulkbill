@@ -18,7 +18,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 interface User {
   id?: string;
   email: string;
-  role: "admin" | "staff";
+  // Accept role as a generic string to avoid duplicate User type conflicts across the app
+  role: string;
   branchName?: string;
 }
 
@@ -27,7 +28,7 @@ interface CsvReadingUploadDialogProps {
   onOpenChange: (open: boolean) => void;
   meterType: 'individual' | 'bulk';
   meters: IndividualCustomer[] | BulkMeter[];
-  currentUser: User | null;
+  currentUser: User | null | undefined;
 }
 
 const readingCsvHeaders = ["meter_number", "reading_value", "reading_date"];

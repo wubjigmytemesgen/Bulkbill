@@ -20,7 +20,7 @@ import {
   initializeBulkMeters,
   initializeCustomers,
 } from '@/lib/data-store';
-import type { IndividualCustomer, BulkMeter, Branch, DomainBill } from '@/lib/data-store';
+import type { IndividualCustomer, BulkMeterRow as BulkMeter, Branch, DomainBill } from '@/lib/data-store';
 import { ReportRequestSchema, ReportResponseSchema, type ReportRequest, type ReportResponse } from './report-flow-types';
 
 
@@ -158,5 +158,57 @@ const generateReportFlow = ai.defineFlow(
 
 
 export async function generateReport(input: ReportRequest): Promise<ReportResponse> {
-  return generateReportFlow(input);
+  try {
+    // Try the AI flow first
+    return await generateReportFlow(input);
+  } catch (e) {
+    console.warn('AI flow failed, falling back to simple parser. Error:', e);
+    // Fallback: simple deterministic parser for common queries
+    const q = (input.query || '').toLowerCase();
+
+    await ensureDataInitialized();
+    const allBills = getBills();
+    const allCustomers = getCustomers();
+    const allBranches = getBranches();
+
+    // Helper to build response
+    const buildResponse = (data: any[], headers: string[], summary: string): ReportResponse => ({ data, headers, summary });
+
+    // Unpaid/paid bills
+    if (q.includes('unpaid bills') || q.includes('unpaid')) {
+      let filtered = allBills.filter(b => b.paymentStatus === 'Unpaid');
+      // optional branch filter
+      const m = q.match(/in ([a-z\s]+)/);
+      if (m) {
+        const branchName = m[1].trim();
+        const branch = allBranches.find(b => b.name.toLowerCase().includes(branchName));
+        if (branch) {
+          const branchMeterIds = new Set(getBulkMeters().filter(m => m.branchId === branch.id).map(x => x.customerKeyNumber));
+          const branchCustIds = new Set(allCustomers.filter(c => c.branchId === branch.id).map(x => x.customerKeyNumber));
+          filtered = filtered.filter(b => (typeof b.individualCustomerId === 'string' && branchCustIds.has(b.individualCustomerId)) || (typeof b.bulkMeterId === 'string' && branchMeterIds.has(b.bulkMeterId)));
+        }
+      }
+      const headers = ['Bill ID', 'Customer', 'Amount', 'Status', 'Due Date'];
+  const data = filtered.map(b => ({ id: b.id, customer: b.individualCustomerId || b.bulkMeterId, amount: b.totalAmountDue ?? 0, status: b.paymentStatus, due_date: b.dueDate }));
+      return buildResponse(data, headers, `Found ${data.length} unpaid bills.`);
+    }
+
+    // Customers in branch
+    if (q.includes('customers') && q.includes('branch')) {
+      const m = q.match(/in ([a-z\s]+)/);
+      if (m) {
+        const branchName = m[1].trim();
+        const branch = allBranches.find(b => b.name.toLowerCase().includes(branchName));
+        if (branch) {
+          const customers = allCustomers.filter(c => c.branchId === branch.id);
+          const headers = ['Customer Key', 'Name', 'Meter Number', 'Status'];
+          const data = customers.map(c => ({ key: c.customerKeyNumber, name: c.name, meter: c.meterNumber, status: c.status }));
+          return buildResponse(data, headers, `Found ${data.length} customers in ${branch.name}.`);
+        }
+      }
+    }
+
+    // Default: return a summary of counts
+    return buildResponse([], [], `Unable to parse the query with the fallback parser. Please try: "Show me unpaid bills in <branch>" or "Show customers in <branch>".`);
+  }
 }

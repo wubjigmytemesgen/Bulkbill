@@ -197,9 +197,11 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                         <SelectContent>
                           <SelectItem value={BRANCH_UNASSIGNED_VALUE}>None (Manual Location)</SelectItem>
                           {availableBranches.map((branch) => (
-                            <SelectItem key={branch.id} value={branch.id}>
-                              {branch.name}
-                            </SelectItem>
+                            branch.id && String(branch.id).trim() !== "" ? (
+                              <SelectItem key={String(branch.id)} value={String(branch.id)}>
+                                {branch.name}
+                              </SelectItem>
+                            ) : null
                           ))}
                         </SelectContent>
                       </Select>
@@ -265,9 +267,11 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                       </FormControl>
                       <SelectContent>
                         {meterSizeOptions.map(option => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
+                          option.value !== undefined && String(option.value).trim() !== "" ? (
+                            <SelectItem key={String(option.value)} value={String(option.value)}>
+                              {option.label}
+                            </SelectItem>
+                          ) : null
                         ))}
                       </SelectContent>
                     </Select>
@@ -374,9 +378,11 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                                 </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                                {subCityOptions.map(option => (
-                                    <SelectItem key={option} value={option}>{option}</SelectItem>
-                                ))}
+                {subCityOptions.map(option => (
+                  option !== undefined && String(option).trim() !== "" ? (
+                    <SelectItem key={String(option)} value={String(option)}>{option}</SelectItem>
+                  ) : null
+                ))}
                             </SelectContent>
                         </Select>
                         <FormMessage />
@@ -396,9 +402,11 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                                 </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                                {woredaOptions.map(option => (
-                                    <SelectItem key={option} value={option}>{option}</SelectItem>
-                                ))}
+                {woredaOptions.map(option => (
+                  option !== undefined && String(option).trim() !== "" ? (
+                    <SelectItem key={String(option)} value={String(option)}>{option}</SelectItem>
+                  ) : null
+                ))}
                             </SelectContent>
                         </Select>
                         <FormMessage />
@@ -463,9 +471,11 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                       </FormControl>
                       <SelectContent>
                         {customerTypes.map((type) => (
-                          <SelectItem key={type} value={type}>
-                            {type}
-                          </SelectItem>
+                          type !== undefined && String(type).trim() !== "" ? (
+                            <SelectItem key={String(type)} value={String(type)}>
+                              {type}
+                            </SelectItem>
+                          ) : null
                         ))}
                       </SelectContent>
                     </Select>
@@ -487,9 +497,11 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                       </FormControl>
                       <SelectContent>
                         {sewerageConnections.map((type) => (
-                          <SelectItem key={type} value={type}>
-                            {type}
-                          </SelectItem>
+                          type !== undefined && String(type).trim() !== "" ? (
+                            <SelectItem key={String(type)} value={String(type)}>
+                              {type}
+                            </SelectItem>
+                          ) : null
                         ))}
                       </SelectContent>
                     </Select>
@@ -511,7 +523,9 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                       </FormControl>
                       <SelectContent>
                         {bulkMeterStatuses.map(status => (
-                          <SelectItem key={status} value={status}>{status}</SelectItem>
+                          status !== undefined && String(status).trim() !== "" ? (
+                            <SelectItem key={String(status)} value={String(status)}>{status}</SelectItem>
+                          ) : null
                         ))}
                       </SelectContent>
                     </Select>
@@ -533,7 +547,9 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                       </FormControl>
                       <SelectContent>
                         {paymentStatuses.map(status => (
-                          <SelectItem key={status} value={status}>{status}</SelectItem>
+                          status !== undefined && String(status).trim() !== "" ? (
+                            <SelectItem key={String(status)} value={String(status)}>{status}</SelectItem>
+                          ) : null
                         ))}
                       </SelectContent>
                     </Select>

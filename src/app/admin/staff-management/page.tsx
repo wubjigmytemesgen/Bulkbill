@@ -46,21 +46,25 @@ export default function StaffManagementPage() {
   }, []);
 
   const handleAddStaff = () => {
+    if (!hasPermission('staff_create')) return;
     setSelectedStaff(null);
     setIsFormOpen(true);
   };
 
   const handleEditStaff = (staff: StaffMember) => {
+    if (!hasPermission('staff_update')) return;
     setSelectedStaff(staff);
     setIsFormOpen(true);
   };
 
   const handleDeleteStaff = (staff: StaffMember) => {
+    if (!hasPermission('staff_delete')) return;
     setStaffToDelete(staff);
     setIsDeleteDialogOpen(true);
   };
 
   const confirmDelete = async () => {
+    if (!hasPermission('staff_delete')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to delete staff.' }); setIsDeleteDialogOpen(false); return; }
     if (staffToDelete) {
       const result = await deleteStaffMemberFromStore(staffToDelete.email);
       if (result.success) {
@@ -74,20 +78,26 @@ export default function StaffManagementPage() {
   };
 
   const handleSubmitStaff = async (data: StaffFormValues) => {
-    if (selectedStaff) {
-      const result = await updateStaffMemberInStore(selectedStaff.email, data);
-      if (result.success) {
-        toast({ title: "Staff Updated", description: `${data.name} has been updated.` });
+    try {
+      if (selectedStaff) {
+        if (!hasPermission('staff_update')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to update staff.' }); return; }
+        const result = await updateStaffMemberInStore(selectedStaff.email, data);
+        if (result.success) {
+          toast({ title: "Staff Updated", description: `${data.name} has been updated.` });
+        } else {
+          toast({ variant: "destructive", title: "Update Failed", description: result.message });
+        }
       } else {
-        toast({ variant: "destructive", title: "Update Failed", description: result.message });
+        if (!hasPermission('staff_create')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to create staff.' }); return; }
+        const result = await addStaffMemberToStore(data as StaffMember);
+        if (result.success) {
+          toast({ title: "Staff Added", description: `${data.name} has been added.` });
+        } else {
+          toast({ variant: "destructive", title: "Add Failed", description: result.message });
+        }
       }
-    } else {
-      const result = await addStaffMemberToStore(data as StaffMember);
-      if (result.success) {
-        toast({ title: "Staff Added", description: `${data.name} has been added.` });
-      } else {
-        toast({ variant: "destructive", title: "Add Failed", description: result.message });
-      }
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to save staff member.' });
     }
     setIsFormOpen(false);
     setSelectedStaff(null);

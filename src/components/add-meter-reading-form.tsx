@@ -154,7 +154,7 @@ export function AddMeterReadingForm({ onSubmit, customers, bulkMeters, isLoading
           render={({ field }) => (
             <FormItem>
               <FormLabel>Select Meter</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value} disabled={isLoading || availableMeters.length === 0}>
+                <Select onValueChange={field.onChange} value={field.value || undefined} disabled={isLoading || availableMeters.length === 0}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder={availableMeters.length === 0 ? "No meters available for type" : "Select a meter"} />
@@ -162,9 +162,11 @@ export function AddMeterReadingForm({ onSubmit, customers, bulkMeters, isLoading
                 </FormControl>
                 <SelectContent>
                   {availableMeters.map((meter) => (
-                    <SelectItem key={meter.value} value={meter.value}>
-                      {meter.label}
-                    </SelectItem>
+                    (meter.value !== undefined && String(meter.value).trim() !== "") ? (
+                      <SelectItem key={String(meter.value)} value={String(meter.value)}>
+                        {meter.label}
+                      </SelectItem>
+                    ) : null
                   ))}
                 </SelectContent>
               </Select>

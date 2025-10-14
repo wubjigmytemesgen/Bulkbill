@@ -45,14 +45,12 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     // The `asChild` prop from ButtonProps determines if we use Slot.
     const Comp = asChild ? Slot : "button"
     
-    // Remove `asChild` from `props` if it exists, to prevent it from being passed to the DOM element.
-    const { asChild: _asChildFromProps, ...restProps } = props
-
+    // Keep all props, Radix Slot will handle unknown props when used as child.
     return (
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
-        {...restProps} 
+        {...props} 
       />
     )
   }

@@ -47,13 +47,26 @@ interface MeterRentDialogProps {
 }
 
 export function MeterRentDialog({ open, onOpenChange, onSubmit, defaultPrices, currency = "ETB", year, canUpdate }: MeterRentDialogProps) {
-  
-  const formSchema = React.useMemo(() => createMeterRentSchema(defaultPrices), [defaultPrices]);
+  // Defensive: ensure defaultPrices is an object (some callers pass DB raw string)
+  const safeDefaultPrices = React.useMemo(() => {
+    if (!defaultPrices) return {};
+    if (typeof defaultPrices === 'string') {
+      try {
+        const parsed = JSON.parse(defaultPrices);
+        return (parsed && typeof parsed === 'object') ? parsed : {};
+      } catch (_) {
+        return {};
+      }
+    }
+    return defaultPrices;
+  }, [defaultPrices]);
+
+  const formSchema = React.useMemo(() => createMeterRentSchema(safeDefaultPrices), [safeDefaultPrices]);
   type FormValues = z.infer<typeof formSchema>;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: Object.entries(defaultPrices).reduce((acc, [key, value]) => {
+    defaultValues: Object.entries(safeDefaultPrices).reduce((acc, [key, value]) => {
       acc[`price_${key.replace(/\./g, '_')}`] = value;
       return acc;
     }, {} as any),
@@ -61,11 +74,11 @@ export function MeterRentDialog({ open, onOpenChange, onSubmit, defaultPrices, c
 
   React.useEffect(() => {
     // Reset form if default prices change (e.g., when a new year is selected)
-    form.reset(Object.entries(defaultPrices).reduce((acc, [key, value]) => {
+    form.reset(Object.entries(safeDefaultPrices).reduce((acc, [key, value]) => {
       acc[`price_${key.replace(/\./g, '_')}`] = value;
       return acc;
     }, {} as any));
-  }, [defaultPrices, form, open]);
+  }, [safeDefaultPrices, form, open]);
 
   const handleSubmit = (data: FormValues) => {
     // Convert form data back to the original price object format

@@ -149,7 +149,27 @@ export function NotificationBell({ user }: NotificationBellProps) {
                   <div className="flex justify-between w-full">
                     <p className="font-semibold text-sm truncate">{n.title}</p>
                     <p className="text-xs text-muted-foreground ml-2 flex-shrink-0">
-                      {formatDistanceToNow(parseISO(n.createdAt), { addSuffix: true })}
+                      {(() => {
+                        const createdAt = n.createdAt as any;
+                        try {
+                          if (!createdAt) return 'Unknown time';
+                          let d: Date;
+                          if (typeof createdAt === 'string') {
+                            // parseISO throws on some invalid strings, guard with Date.parse
+                            if (isNaN(Date.parse(createdAt))) return 'Unknown time';
+                            d = parseISO(createdAt);
+                          } else if (typeof createdAt === 'number') {
+                            d = new Date(createdAt);
+                          } else if (createdAt instanceof Date) {
+                            d = createdAt;
+                          } else {
+                            return 'Unknown time';
+                          }
+                          return formatDistanceToNow(d, { addSuffix: true });
+                        } catch (_e) {
+                          return 'Unknown time';
+                        }
+                      })()}
                     </p>
                   </div>
                   <p className="text-xs text-muted-foreground w-full truncate">{n.message}</p>
@@ -170,7 +190,26 @@ export function NotificationBell({ user }: NotificationBellProps) {
              <DialogHeader>
                  <DialogTitle>{selectedNotification.title}</DialogTitle>
                  <DialogDescription className="text-xs pt-2">
-                     Sent by {selectedNotification.senderName} to {getDisplayTargetName(selectedNotification.targetBranchId)} &bull; {formatDistanceToNow(parseISO(selectedNotification.createdAt), { addSuffix: true })}
+                     Sent by {selectedNotification.senderName} to {getDisplayTargetName(selectedNotification.targetBranchId)} &bull; {(() => {
+                        const createdAt = selectedNotification.createdAt as any;
+                        try {
+                          if (!createdAt) return 'Unknown time';
+                          let d: Date;
+                          if (typeof createdAt === 'string') {
+                            if (isNaN(Date.parse(createdAt))) return 'Unknown time';
+                            d = parseISO(createdAt);
+                          } else if (typeof createdAt === 'number') {
+                            d = new Date(createdAt);
+                          } else if (createdAt instanceof Date) {
+                            d = createdAt;
+                          } else {
+                            return 'Unknown time';
+                          }
+                          return formatDistanceToNow(d, { addSuffix: true });
+                        } catch (_e) {
+                          return 'Unknown time';
+                        }
+                     })()}
                  </DialogDescription>
              </DialogHeader>
              <div className="py-4 text-sm">{selectedNotification.message}</div>

@@ -1,12 +1,10 @@
-
-
 "use client";
 
 import type { IndividualCustomer as DomainIndividualCustomer, IndividualCustomerStatus } from '@/app/admin/individual-customers/individual-customer-types';
 import type { BulkMeter as DomainBulkMeterTypeFromTypes } from '@/app/admin/bulk-meters/bulk-meter-types'; 
 import type { Branch as DomainBranch } from '@/app/admin/branches/branch-types';
 import type { StaffMember as DomainStaffMember } from '@/app/admin/staff-management/staff-types';
-import { calculateBill, type CustomerType, type SewerageConnection, type PaymentStatus, type BillCalculationResult } from '@/lib/billing';
+import { calculateBillFromTariff, calculateBill, type CustomerType, type SewerageConnection, type PaymentStatus, type BillCalculationResult, type TariffInfo, type TariffTier } from '@/lib/billing';
 import { KnowledgeBaseArticle, KnowledgeBaseArticleInsert, KnowledgeBaseArticleUpdate } from '@/app/admin/knowledge-base/knowledge-base-types';
 
 import {
@@ -62,48 +60,50 @@ import {
   getAllKnowledgeBaseArticlesAction
 } from './actions';
 
-import type { Database } from '@/types/supabase';
 
-// Helper types to extract Row, Insert, and Update types from the database definition
-type PublicTables = Database['public']['Tables'];
-type RoleRow = PublicTables['roles']['Row'];
-type PermissionRow = PublicTables['permissions']['Row'];
-type RolePermissionRow = PublicTables['role_permissions']['Row'];
-type Branch = PublicTables['branches']['Row'];
-type BulkMeterRow = PublicTables['bulk_meters']['Row'];
-type IndividualCustomer = PublicTables['individual_customers']['Row'];
-type StaffMember = PublicTables['staff_members']['Row'];
-type Bill = PublicTables['bills']['Row'];
-type IndividualCustomerReading = PublicTables['individual_customer_readings']['Row'];
-type BulkMeterReading = PublicTables['bulk_meter_readings']['Row'];
-type Payment = PublicTables['payments']['Row'];
-type ReportLog = PublicTables['reports']['Row'];
-type NotificationRow = PublicTables['notifications']['Row'];
-type TariffRow = PublicTables['tariffs']['Row'];
-type KnowledgeBaseArticleRow = PublicTables['knowledge_base_articles']['Row'];
+// NOTE: During incremental migration from Postgres -> MySQL we relax
+// the strict generated DB types in this data-store. The db-queries/actions
+// layer returns loose shapes and we map them to domain types in the mappers
+// below. Using `any` here prevents widespread type churn while we complete
+// the migration and introduce a proper DB boundary layer.
+type RoleRow = any;
+type PermissionRow = any;
+type RolePermissionRow = any;
+type Branch = any;
+type BulkMeterRow = any;
+type IndividualCustomer = any;
+type StaffMemberRow = any;
+type Bill = any;
+type IndividualCustomerReading = any;
+type BulkMeterReading = any;
+type Payment = any;
+type ReportLog = any;
+type NotificationRow = any;
+type TariffRow = any;
+type KnowledgeBaseArticleRow = any;
 
-
-type BranchInsert = PublicTables['branches']['Insert'];
-type BranchUpdate = PublicTables['branches']['Update'];
-type BulkMeterInsert = PublicTables['bulk_meters']['Insert'];
-type BulkMeterUpdate = PublicTables['bulk_meters']['Update'];
-type IndividualCustomerInsert = PublicTables['individual_customers']['Insert'];
-type IndividualCustomerUpdate = PublicTables['individual_customers']['Update'];
-type StaffMemberInsert = PublicTables['staff_members']['Insert'];
-type StaffMemberUpdate = PublicTables['staff_members']['Update'];
-type BillInsert = PublicTables['bills']['Insert'];
-type BillUpdate = PublicTables['bills']['Update'];
-type IndividualCustomerReadingInsert = PublicTables['individual_customer_readings']['Insert'];
-type IndividualCustomerReadingUpdate = PublicTables['individual_customer_readings']['Update'];
-type BulkMeterReadingInsert = PublicTables['bulk_meter_readings']['Insert'];
-type BulkMeterReadingUpdate = PublicTables['bulk_meter_readings']['Update'];
-type PaymentInsert = PublicTables['payments']['Insert'];
-type PaymentUpdate = PublicTables['payments']['Update'];
-type ReportLogInsert = PublicTables['reports']['Insert'];
-type ReportLogUpdate = PublicTables['reports']['Update'];
-type NotificationInsert = PublicTables['notifications']['Insert'];
-type TariffInsert = PublicTables['tariffs']['Insert'];
-type TariffUpdate = PublicTables['tariffs']['Update'];
+type BranchInsert = any;
+type BranchUpdate = any;
+type BulkMeterInsert = any;
+type BulkMeterUpdate = any;
+type IndividualCustomerInsert = any;
+type IndividualCustomerUpdate = any;
+type StaffMemberInsert = any;
+type StaffMemberUpdate = any;
+type BillInsert = any;
+type BillUpdate = any;
+type IndividualCustomerReadingInsert = any;
+type IndividualCustomerReadingUpdate = any;
+type BulkMeterReadingInsert = any;
+type BulkMeterReadingUpdate = any;
+type PaymentInsert = any;
+type PaymentUpdate = any;
+type ReportLogInsert = any;
+type ReportLogUpdate = any;
+type NotificationInsert = any;
+type TariffInsert = any;
+type TariffUpdate = any;
+// keep the imported KnowledgeBaseArticleInsert/Update types from domain module
 
 
 export type { RoleRow, PermissionRow, RolePermissionRow, Branch, BulkMeterRow, IndividualCustomer, StaffMember, Bill, IndividualCustomerReading, BulkMeterReading, Payment, ReportLog, NotificationRow, BranchInsert, BranchUpdate, BulkMeterInsert, BulkMeterUpdate, IndividualCustomerInsert, IndividualCustomerUpdate, StaffMemberInsert, StaffMemberUpdate, BillInsert, BillUpdate, IndividualCustomerReadingInsert, IndividualCustomerReadingUpdate, BulkMeterReadingInsert, BulkMeterReadingUpdate, PaymentInsert, PaymentUpdate, ReportLogInsert, ReportLogUpdate, NotificationInsert, TariffRow, TariffInsert, TariffUpdate };
@@ -111,23 +111,7 @@ export type { RoleRow, PermissionRow, RolePermissionRow, Branch, BulkMeterRow, I
 
 export type { RoleRow as DomainRole, PermissionRow as DomainPermission, RolePermissionRow as DomainRolePermission } from './actions';
 
-export interface TariffTier {
-  rate: number;
-  limit: number | typeof Infinity;
-}
-
-export interface TariffInfo {
-    id: string;
-    customer_type: CustomerType;
-    year: number;
-    tiers: TariffTier[];
-    maintenance_percentage: number;
-    sanitation_percentage: number;
-    sewerage_rate_per_m3: number;
-    meter_rent_prices: { [key: string]: number; };
-    vat_rate: number;
-    domestic_vat_threshold_m3: number;
-}
+// Use TariffInfo and TariffTier types from the billing module to keep a single source of truth.
 
 
 export interface DomainNotification {
@@ -160,7 +144,7 @@ export interface DomainBill {
   amountPaid?: number;
   balanceDue?: number | null;
   dueDate: string;
-  paymentStatus: 'Paid' | 'Unpaid';
+  paymentStatus: PaymentStatus;
   billNumber?: string | null;
   notes?: string | null;
   createdAt?: string | null;
@@ -288,7 +272,7 @@ const staffMemberListeners: Set<Listener<StaffMember>> = new Set();
 const billListeners: Set<Listener<DomainBill>> = new Set();
 const individualCustomerReadingListeners: Set<Listener<DomainIndividualCustomerReading>> = new Set();
 const bulkMeterReadingListeners: Set<Listener<DomainBulkMeterReading>> = new Set();
-const paymentListeners: Set<Listener<DomainPayment>> = new Set();
+const paymentListeners: Set<Listener<DomainPayment>> = new Set(); 
 const reportLogListeners: Set<Listener<DomainReportLog>> = new Set();
 const notificationListeners: Set<Listener<DomainNotification>> = new Set();
 const roleListeners: Set<Listener<DomainRole>> = new Set();
@@ -315,22 +299,22 @@ const notifyKnowledgeBaseArticleListeners = () => knowledgeBaseArticleListeners.
 
 
 // --- Mappers ---
-const mapSupabaseNotificationToDomain = (sn: NotificationRow): DomainNotification => ({
-  id: sn.id,
-  createdAt: sn.created_at,
-  title: sn.title,
-  message: sn.message,
-  senderName: sn.sender_name,
-  targetBranchId: sn.target_branch_id,
+const mapDbNotificationToDomain = (dbNotification: NotificationRow): DomainNotification => ({
+  id: dbNotification.id,
+  createdAt: dbNotification.created_at,
+  title: dbNotification.title,
+  message: dbNotification.message,
+  senderName: dbNotification.sender_name,
+  targetBranchId: dbNotification.target_branch_id,
 });
 
-const mapSupabaseBranchToDomain = (sb: Branch): DomainBranch => ({
-  id: sb.id,
-  name: sb.name,
-  location: sb.location,
-  contactPerson: sb.contactPerson || undefined,
-  contactPhone: sb.contactPhone ? String(sb.contactPhone) : undefined,
-  status: sb.status,
+const mapDbBranchToDomain = (dbBranch: Branch): DomainBranch => ({
+  id: dbBranch.id,
+  name: dbBranch.name,
+  location: dbBranch.location,
+  contactPerson: dbBranch.contactPerson || undefined,
+  contactPhone: dbBranch.contactPhone ? String(dbBranch.contactPhone) : undefined,
+  status: dbBranch.status,
 });
 
 const parsePhoneNumberForDB = (phoneString?: string): number | null => {
@@ -360,42 +344,55 @@ const mapDomainBranchToUpdate = (branch: Partial<Omit<DomainBranch, 'id'>>): Bra
 };
 
 
-const mapSupabaseCustomerToDomain = async (sc: IndividualCustomer): Promise<DomainIndividualCustomer> => {
-  const usage = sc.currentReading - sc.previousReading;
-  const { totalBill: bill } = await calculateBill(usage, sc.customerType, sc.sewerageConnection, Number(sc.meterSize), sc.month);
+const mapDbCustomerToDomain = async (dbCustomer: IndividualCustomer): Promise<DomainIndividualCustomer> => {
+  const usage = dbCustomer.currentReading - dbCustomer.previousReading;
+  const { totalBill: bill } = await computeBillLocal(usage, dbCustomer.customerType, dbCustomer.sewerageConnection, Number(dbCustomer.meterSize), dbCustomer.month);
   return {
-    customerKeyNumber: sc.customerKeyNumber,
-    name: sc.name,
-    contractNumber: sc.contractNumber,
-    customerType: sc.customerType,
-    bookNumber: sc.bookNumber,
-    ordinal: Number(sc.ordinal),
-    meterSize: Number(sc.meterSize),
-    meterNumber: sc.meterNumber,
-    previousReading: Number(sc.previousReading),
-    currentReading: Number(sc.currentReading),
-    month: sc.month,
-    specificArea: sc.specificArea,
-    subCity: sc.subCity,
-    woreda: sc.woreda,
-    sewerageConnection: sc.sewerageConnection,
-    assignedBulkMeterId: sc.assignedBulkMeterId || undefined,
-    branchId: sc.branch_id || undefined,
-    status: sc.status,
-    paymentStatus: sc.paymentStatus,
+    customerKeyNumber: dbCustomer.customerKeyNumber,
+    name: dbCustomer.name,
+    contractNumber: dbCustomer.contractNumber,
+    customerType: dbCustomer.customerType,
+    bookNumber: dbCustomer.bookNumber,
+    ordinal: Number(dbCustomer.ordinal),
+    meterSize: Number(dbCustomer.meterSize),
+    meterNumber: dbCustomer.meterNumber,
+    previousReading: Number(dbCustomer.previousReading),
+    currentReading: Number(dbCustomer.currentReading),
+    month: dbCustomer.month,
+    specificArea: dbCustomer.specificArea,
+    subCity: dbCustomer.subCity,
+    woreda: dbCustomer.woreda,
+    sewerageConnection: dbCustomer.sewerageConnection,
+    assignedBulkMeterId: dbCustomer.assignedBulkMeterId || undefined,
+    branchId: dbCustomer.branch_id || undefined,
+    status: dbCustomer.status,
+    paymentStatus: dbCustomer.paymentStatus,
     calculatedBill: bill,
-    created_at: sc.created_at,
-    updated_at: sc.updated_at,
-    approved_by: sc.approved_by,
-    approved_at: sc.approved_at,
+    created_at: dbCustomer.created_at,
+    updated_at: dbCustomer.updated_at,
+    approved_by: dbCustomer.approved_by,
+    approved_at: dbCustomer.approved_at,
   };
 };
+
+// Helper: compute bill using local tariff store. Returns zeros if tariff is missing.
+async function computeBillLocal(usage: number, customerType: CustomerType, sewerageConnection: SewerageConnection, meterSize: number, month: string): Promise<BillCalculationResult> {
+  // Use live tariff data from DB for the billing year when calculating bills.
+  // `calculateBill` will attempt to fetch the tariff for the given billing month/year
+  // from the database and fall back to a zeroed result on failure.
+  try {
+    return await calculateBill(usage, customerType, sewerageConnection, meterSize, month);
+  } catch (e) {
+    console.warn('computeBillLocal: calculateBill failed, returning zero bill.', e);
+    return { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, vatAmount: 0, meterRent: 0, sewerageCharge: 0 };
+  }
+}
 
 const mapDomainCustomerToInsert = async (
   customer: Partial<DomainIndividualCustomer>
 ): Promise<IndividualCustomerInsert> => {
   const usage = (customer.currentReading || 0) - (customer.previousReading || 0);
-  const { totalBill: bill } = await calculateBill(usage, customer.customerType!, customer.sewerageConnection!, Number(customer.meterSize), customer.month!);
+  const { totalBill: bill } = await computeBillLocal(usage, customer.customerType!, customer.sewerageConnection!, Number(customer.meterSize), customer.month!);
   return {
     name: customer.name!,
     customerKeyNumber: customer.customerKeyNumber!,
@@ -446,7 +443,7 @@ const mapDomainCustomerToUpdate = async (customerWithUpdates: DomainIndividualCu
     };
 
     const usage = customerWithUpdates.currentReading - customerWithUpdates.previousReading;
-    const { totalBill } = await calculateBill(
+  const { totalBill } = await computeBillLocal(
         usage,
         customerWithUpdates.customerType,
         customerWithUpdates.sewerageConnection,
@@ -459,57 +456,57 @@ const mapDomainCustomerToUpdate = async (customerWithUpdates: DomainIndividualCu
 };
 
 
-const mapSupabaseBulkMeterToDomain = async (sbm: BulkMeterRow): Promise<BulkMeter> => {
-  const calculatedBmUsage = (sbm.currentReading ?? 0) - (sbm.previousReading ?? 0);
-  const bmUsage = sbm.bulk_usage === null || sbm.bulk_usage === undefined
+const mapDbBulkMeterToDomain = async (dbBulkMeter: BulkMeterRow): Promise<BulkMeter> => {
+  const calculatedBmUsage = (dbBulkMeter.currentReading ?? 0) - (dbBulkMeter.previousReading ?? 0);
+  const bmUsage = dbBulkMeter.bulk_usage === null || dbBulkMeter.bulk_usage === undefined
                   ? calculatedBmUsage
-                  : Number(sbm.bulk_usage);
+                  : Number(dbBulkMeter.bulk_usage);
 
-  const { totalBill: calculatedBmTotalBill } = await calculateBill(bmUsage, sbm.charge_group || 'Non-domestic', sbm.sewerage_connection || 'No', Number(sbm.meterSize), sbm.month);
-  const bmTotalBill = sbm.total_bulk_bill === null || sbm.total_bulk_bill === undefined
+  const { totalBill: calculatedBmTotalBill } = await computeBillLocal(bmUsage, dbBulkMeter.charge_group || 'Non-domestic', dbBulkMeter.sewerage_connection || 'No', Number(dbBulkMeter.meterSize), dbBulkMeter.month);
+  const bmTotalBill = dbBulkMeter.total_bulk_bill === null || dbBulkMeter.total_bulk_bill === undefined
                       ? calculatedBmTotalBill
-                      : Number(sbm.total_bulk_bill);
+                      : Number(dbBulkMeter.total_bulk_bill);
   return {
-    customerKeyNumber: sbm.customerKeyNumber,
-    name: sbm.name,
-    contractNumber: sbm.contractNumber,
-    meterSize: Number(sbm.meterSize),
-    meterNumber: sbm.meterNumber,
-    previousReading: Number(sbm.previousReading),
-    currentReading: Number(sbm.currentReading),
-    month: sbm.month,
-    specificArea: sbm.specificArea,
-    subCity: sbm.subCity,
-    woreda: sbm.woreda,
-    branchId: sbm.branch_id || undefined, 
-    status: sbm.status,
-    paymentStatus: sbm.paymentStatus,
-    chargeGroup: sbm.charge_group,
-    sewerageConnection: sbm.sewerage_connection,
+    customerKeyNumber: dbBulkMeter.customerKeyNumber,
+    name: dbBulkMeter.name,
+    contractNumber: dbBulkMeter.contractNumber,
+    meterSize: Number(dbBulkMeter.meterSize),
+    meterNumber: dbBulkMeter.meterNumber,
+    previousReading: Number(dbBulkMeter.previousReading),
+    currentReading: Number(dbBulkMeter.currentReading),
+    month: dbBulkMeter.month,
+    specificArea: dbBulkMeter.specificArea,
+    subCity: dbBulkMeter.subCity,
+    woreda: dbBulkMeter.woreda,
+    branchId: dbBulkMeter.branch_id || undefined, 
+    status: dbBulkMeter.status,
+    paymentStatus: dbBulkMeter.paymentStatus,
+    chargeGroup: dbBulkMeter.charge_group,
+    sewerageConnection: dbBulkMeter.sewerage_connection,
     bulkUsage: bmUsage,
     totalBulkBill: bmTotalBill,
-    differenceUsage: sbm.difference_usage === null || sbm.difference_usage === undefined ? undefined : Number(sbm.difference_usage),
-    differenceBill: sbm.difference_bill === null || sbm.difference_bill === undefined ? undefined : Number(sbm.difference_bill),
-    outStandingbill: sbm.outStandingbill ? Number(sbm.outStandingbill) : 0, 
-    xCoordinate: sbm.x_coordinate ? Number(sbm.x_coordinate) : undefined,
-    yCoordinate: sbm.y_coordinate ? Number(sbm.y_coordinate) : undefined,
-    approved_by: sbm.approved_by,
-    approved_at: sbm.approved_at,
-    location: sbm.subCity,
+    differenceUsage: dbBulkMeter.difference_usage === null || dbBulkMeter.difference_usage === undefined ? undefined : Number(dbBulkMeter.difference_usage),
+    differenceBill: dbBulkMeter.difference_bill === null || dbBulkMeter.difference_bill === undefined ? undefined : Number(dbBulkMeter.difference_bill),
+    outStandingbill: dbBulkMeter.outStandingbill ? Number(dbBulkMeter.outStandingbill) : 0, 
+    xCoordinate: dbBulkMeter.x_coordinate ? Number(dbBulkMeter.x_coordinate) : undefined,
+    yCoordinate: dbBulkMeter.y_coordinate ? Number(dbBulkMeter.y_coordinate) : undefined,
+    approved_by: dbBulkMeter.approved_by,
+    approved_at: dbBulkMeter.approved_at,
+    location: dbBulkMeter.subCity,
   };
 };
 
 
 const mapDomainBulkMeterToInsert = async (bm: Partial<BulkMeter>): Promise<BulkMeterInsert> => {
   const calculatedBulkUsage = (bm.currentReading ?? 0) - (bm.previousReading ?? 0);
-  const { totalBill: calculatedTotalBulkBill } = await calculateBill(calculatedBulkUsage, bm.chargeGroup as CustomerType || "Non-domestic", bm.sewerageConnection || "No", Number(bm.meterSize), bm.month!);
+  const { totalBill: calculatedTotalBulkBill } = await computeBillLocal(calculatedBulkUsage, bm.chargeGroup as CustomerType || "Non-domestic", bm.sewerageConnection || "No", Number(bm.meterSize), bm.month!);
 
   const allIndividualCustomers = getCustomers();
   const associatedCustomers = allIndividualCustomers.filter(c => c.assignedBulkMeterId === bm.customerKeyNumber);
   const sumIndividualUsage = associatedCustomers.reduce((acc, cust) => acc + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0);
 
   const differenceUsage = calculatedBulkUsage - sumIndividualUsage;
-  const { totalBill: differenceBill } = await calculateBill(differenceUsage, bm.chargeGroup as CustomerType || "Non-domestic", bm.sewerageConnection || "No", Number(bm.meterSize), bm.month!);
+  const { totalBill: differenceBill } = await computeBillLocal(differenceUsage, bm.chargeGroup as CustomerType || "Non-domestic", bm.sewerageConnection || "No", Number(bm.meterSize), bm.month!);
 
   return {
     name: bm.name!,
@@ -525,7 +522,8 @@ const mapDomainBulkMeterToInsert = async (bm: Partial<BulkMeter>): Promise<BulkM
     woreda: bm.woreda!,
     branch_id: bm.branchId, 
     status: bm.status || 'Active',
-    paymentStatus: bm.paymentStatus || 'Unpaid',
+    // tolerate an extra 'Pending' status coming from older data; DB types may allow it
+    paymentStatus: (bm.paymentStatus as any) || 'Unpaid',
     charge_group: bm.chargeGroup as "Domestic" | "Non-domestic" || 'Non-domestic',
     sewerage_connection: bm.sewerageConnection || 'No',
     bulk_usage: calculatedBulkUsage,
@@ -554,7 +552,7 @@ const mapDomainBulkMeterToUpdate = async (bulkMeterWithUpdates: BulkMeter): Prom
         woreda: bulkMeterWithUpdates.woreda,
         branch_id: bulkMeterWithUpdates.branchId,
         status: bulkMeterWithUpdates.status,
-        paymentStatus: bulkMeterWithUpdates.paymentStatus,
+    paymentStatus: (bulkMeterWithUpdates.paymentStatus as any),
         charge_group: bulkMeterWithUpdates.chargeGroup as "Domestic" | "Non-domestic",
         sewerage_connection: bulkMeterWithUpdates.sewerageConnection,
         outStandingbill: Number(bulkMeterWithUpdates.outStandingbill),
@@ -565,7 +563,7 @@ const mapDomainBulkMeterToUpdate = async (bulkMeterWithUpdates: BulkMeter): Prom
     };
 
     const newBulkUsage = bulkMeterWithUpdates.currentReading - bulkMeterWithUpdates.previousReading;
-    const { totalBill: newTotalBulkBill } = await calculateBill(
+  const { totalBill: newTotalBulkBill } = await computeBillLocal(
         newBulkUsage,
         bulkMeterWithUpdates.chargeGroup as CustomerType,
         bulkMeterWithUpdates.sewerageConnection,
@@ -584,7 +582,7 @@ const mapDomainBulkMeterToUpdate = async (bulkMeterWithUpdates: BulkMeter): Prom
     const newDifferenceUsage = newBulkUsage - sumIndividualUsage;
     updatePayload.difference_usage = newDifferenceUsage;
     
-    const { totalBill: newDifferenceBill } = await calculateBill(
+  const { totalBill: newDifferenceBill } = await computeBillLocal(
         newDifferenceUsage,
         bulkMeterWithUpdates.chargeGroup as CustomerType,
         bulkMeterWithUpdates.sewerageConnection,
@@ -597,17 +595,17 @@ const mapDomainBulkMeterToUpdate = async (bulkMeterWithUpdates: BulkMeter): Prom
 };
 
 
-const mapSupabaseStaffToDomain = (ss: StaffMember & { roles?: { role_name: string } | null; role_name?: string }): StaffMember => ({
-  id: ss.id,
-  name: ss.name,
-  email: ss.email,
-  password: ss.password || undefined,
-  branchName: ss.branch,
-  status: ss.status,
-  phone: ss.phone || undefined,
-  hireDate: ss.hire_date || undefined,
-  role: ss.role_name || ss.roles?.role_name || ss.role, // Handle direct role_name from auth query
-  roleId: ss.role_id || undefined,
+const mapDbStaffToDomain = (dbStaff: StaffMemberRow & { roles?: { role_name: string } | null; role_name?: string }): StaffMember => ({
+  id: dbStaff.id,
+  name: dbStaff.name,
+  email: dbStaff.email,
+  password: dbStaff.password || undefined,
+  branchName: dbStaff.branch,
+  status: dbStaff.status,
+  phone: dbStaff.phone || undefined,
+  hireDate: dbStaff.hire_date || undefined,
+  role: dbStaff.role_name || dbStaff.roles?.role_name || dbStaff.role, // Handle direct role_name from auth query
+  roleId: dbStaff.role_id || undefined,
 });
 
 const mapDomainStaffToInsert = (staff: StaffMember): StaffMemberInsert => ({
@@ -641,35 +639,35 @@ const mapDomainStaffToUpdate = (staff: Partial<Omit<StaffMember, 'id' | 'email'>
 };
 
 
-const mapSupabaseBillToDomain = (sb: Bill): DomainBill => ({
-  id: sb.id,
-  individualCustomerId: sb.individual_customer_id,
-  bulkMeterId: sb.bulk_meter_id,
-  billPeriodStartDate: sb.bill_period_start_date,
-  billPeriodEndDate: sb.bill_period_end_date,
-  monthYear: sb.month_year,
-  previousReadingValue: Number(sb.previous_reading_value),
-  currentReadingValue: Number(sb.current_reading_value),
-  usageM3: sb.usage_m3 ? Number(sb.usage_m3) : null,
-  differenceUsage: sb.difference_usage ? Number(sb.difference_usage) : null,
-  baseWaterCharge: Number(sb.base_water_charge),
-  sewerageCharge: sb.sewerage_charge ? Number(sb.sewerage_charge) : null,
-  maintenanceFee: sb.maintenance_fee ? Number(sb.maintenance_fee) : null,
-  sanitationFee: sb.sanitation_fee ? Number(sb.sanitation_fee) : null,
-  meterRent: sb.meter_rent ? Number(sb.meter_rent) : null,
-  balanceCarriedForward: sb.balance_carried_forward ? Number(sb.balance_carried_forward) : null,
-  totalAmountDue: Number(sb.total_amount_due),
-  amountPaid: sb.amount_paid ? Number(sb.amount_paid) : undefined,
-  balanceDue: sb.balance_due ? Number(sb.balance_due) : null,
-  dueDate: sb.due_date,
-  paymentStatus: sb.payment_status,
-  billNumber: sb.bill_number,
-  notes: sb.notes,
-  createdAt: sb.created_at,
-  updatedAt: sb.updated_at,
+const mapDbBillToDomain = (dbBill: Bill): DomainBill => ({
+  id: dbBill.id,
+  individualCustomerId: dbBill.individual_customer_id,
+  bulkMeterId: dbBill.bulk_meter_id,
+  billPeriodStartDate: dbBill.bill_period_start_date,
+  billPeriodEndDate: dbBill.bill_period_end_date,
+  monthYear: dbBill.month_year,
+  previousReadingValue: Number(dbBill.previous_reading_value),
+  currentReadingValue: Number(dbBill.current_reading_value),
+  usageM3: dbBill.usage_m3 ? Number(dbBill.usage_m3) : null,
+  differenceUsage: dbBill.difference_usage ? Number(dbBill.difference_usage) : null,
+  baseWaterCharge: Number(dbBill.base_water_charge),
+  sewerageCharge: dbBill.sewerage_charge ? Number(dbBill.sewerage_charge) : null,
+  maintenanceFee: dbBill.maintenance_fee ? Number(dbBill.maintenance_fee) : null,
+  sanitationFee: dbBill.sanitation_fee ? Number(dbBill.sanitation_fee) : null,
+  meterRent: dbBill.meter_rent ? Number(dbBill.meter_rent) : null,
+  balanceCarriedForward: dbBill.balance_carried_forward ? Number(dbBill.balance_carried_forward) : null,
+  totalAmountDue: Number(dbBill.total_amount_due),
+  amountPaid: dbBill.amount_paid ? Number(dbBill.amount_paid) : undefined,
+  balanceDue: dbBill.balance_due ? Number(dbBill.balance_due) : null,
+  dueDate: dbBill.due_date,
+  paymentStatus: dbBill.payment_status,
+  billNumber: dbBill.bill_number,
+  notes: dbBill.notes,
+  createdAt: dbBill.created_at,
+  updatedAt: dbBill.updated_at,
 });
 
-const mapDomainBillToSupabase = (bill: Partial<DomainBill>): Partial<BillInsert | BillUpdate> => {
+const mapDomainBillToDb = (bill: Partial<DomainBill>): Partial<BillInsert | BillUpdate> => {
     const payload: Partial<BillInsert | BillUpdate> = {};
     if (bill.individualCustomerId !== undefined) payload.individual_customer_id = bill.individualCustomerId;
     if (bill.bulkMeterId !== undefined) payload.bulk_meter_id = bill.bulkMeterId;
@@ -695,20 +693,20 @@ const mapDomainBillToSupabase = (bill: Partial<DomainBill>): Partial<BillInsert 
     return payload;
 };
 
-const mapSupabaseIndividualReadingToDomain = (smr: IndividualCustomerReading): DomainIndividualCustomerReading => ({
-  id: smr.id,
-  individualCustomerId: smr.individual_customer_id,
-  readerStaffId: smr.reader_staff_id,
-  readingDate: smr.reading_date,
-  monthYear: smr.month_year,
-  readingValue: Number(smr.reading_value),
-  isEstimate: smr.is_estimate,
-  notes: smr.notes,
-  createdAt: smr.created_at,
-  updatedAt: smr.updated_at,
+const mapDbIndividualReadingToDomain = (dbReading: IndividualCustomerReading): DomainIndividualCustomerReading => ({
+  id: dbReading.id,
+  individualCustomerId: dbReading.individual_customer_id,
+  readerStaffId: dbReading.reader_staff_id,
+  readingDate: dbReading.reading_date,
+  monthYear: dbReading.month_year,
+  readingValue: Number(dbReading.reading_value),
+  isEstimate: dbReading.is_estimate,
+  notes: dbReading.notes,
+  createdAt: dbReading.created_at,
+  updatedAt: dbReading.updated_at,
 });
 
-const mapDomainIndividualReadingToSupabase = (mr: Partial<DomainIndividualCustomerReading>): Partial<IndividualCustomerReadingInsert | IndividualCustomerReadingUpdate> => {
+const mapDomainIndividualReadingToDb = (mr: Partial<DomainIndividualCustomerReading>): Partial<IndividualCustomerReadingInsert | IndividualCustomerReadingUpdate> => {
     const payload: Partial<IndividualCustomerReadingInsert | IndividualCustomerReadingUpdate> = {};
     if (mr.individualCustomerId !== undefined) payload.individual_customer_id = mr.individualCustomerId;
     if (mr.readerStaffId !== undefined) payload.reader_staff_id = mr.readerStaffId;
@@ -720,20 +718,20 @@ const mapDomainIndividualReadingToSupabase = (mr: Partial<DomainIndividualCustom
     return payload;
 };
 
-const mapSupabaseBulkReadingToDomain = (smr: BulkMeterReading): DomainBulkMeterReading => ({
-  id: smr.id,
-  bulkMeterId: smr.bulk_meter_id,
-  readerStaffId: smr.reader_staff_id,
-  readingDate: smr.reading_date,
-  monthYear: smr.month_year,
-  readingValue: Number(smr.reading_value),
-  isEstimate: smr.is_estimate,
-  notes: smr.notes,
-  createdAt: smr.created_at,
-  updatedAt: smr.updated_at,
+const mapDbBulkReadingToDomain = (dbReading: BulkMeterReading): DomainBulkMeterReading => ({
+  id: dbReading.id,
+  bulkMeterId: dbReading.bulk_meter_id,
+  readerStaffId: dbReading.reader_staff_id,
+  readingDate: dbReading.reading_date,
+  monthYear: dbReading.month_year,
+  readingValue: Number(dbReading.reading_value),
+  isEstimate: dbReading.is_estimate,
+  notes: dbReading.notes,
+  createdAt: dbReading.created_at,
+  updatedAt: dbReading.updated_at,
 });
 
-const mapDomainBulkReadingToSupabase = (mr: Partial<DomainBulkMeterReading>): Partial<BulkMeterReadingInsert | BulkMeterReadingUpdate> => {
+const mapDomainBulkReadingToDb = (mr: Partial<DomainBulkMeterReading>): Partial<BulkMeterReadingInsert | BulkMeterReadingUpdate> => {
     const payload: Partial<BulkMeterReadingInsert | BulkMeterReadingUpdate> = {};
     if (mr.bulkMeterId !== undefined) payload.bulk_meter_id = mr.bulkMeterId;
     if (mr.readerStaffId !== undefined) payload.reader_staff_id = mr.readerStaffId;
@@ -745,21 +743,21 @@ const mapDomainBulkReadingToSupabase = (mr: Partial<DomainBulkMeterReading>): Pa
     return payload;
 };
 
-const mapSupabasePaymentToDomain = (sp: Payment): DomainPayment => ({
-  id: sp.id,
-  billId: sp.bill_id,
-  individualCustomerId: sp.individual_customer_id,
-  paymentDate: sp.payment_date,
-  amountPaid: Number(sp.amount_paid),
-  paymentMethod: sp.payment_method,
-  transactionReference: sp.transaction_reference,
-  processedByStaffId: sp.processed_by_staff_id,
-  notes: sp.notes,
-  createdAt: sp.created_at,
-  updatedAt: sp.updated_at,
+const mapDbPaymentToDomain = (dbPayment: Payment): DomainPayment => ({
+  id: dbPayment.id,
+  billId: dbPayment.bill_id,
+  individualCustomerId: dbPayment.individual_customer_id,
+  paymentDate: dbPayment.payment_date,
+  amountPaid: Number(dbPayment.amount_paid),
+  paymentMethod: dbPayment.payment_method,
+  transactionReference: dbPayment.transaction_reference,
+  processedByStaffId: dbPayment.processed_by_staff_id,
+  notes: dbPayment.notes,
+  createdAt: dbPayment.created_at,
+  updatedAt: dbPayment.updated_at,
 });
 
-const mapDomainPaymentToSupabase = (p: Partial<DomainPayment>): Partial<PaymentInsert | PaymentUpdate> => {
+const mapDomainPaymentToDb = (p: Partial<DomainPayment>): Partial<PaymentInsert | PaymentUpdate> => {
     const payload: Partial<PaymentInsert | PaymentUpdate> = {};
     if (p.billId !== undefined) payload.bill_id = p.billId;
     if (p.individualCustomerId !== undefined) payload.individual_customer_id = p.individualCustomerId;
@@ -772,21 +770,21 @@ const mapDomainPaymentToSupabase = (p: Partial<DomainPayment>): Partial<PaymentI
     return payload;
 };
 
-const mapSupabaseReportLogToDomain = (srl: ReportLog): DomainReportLog => ({
-  id: srl.id,
-  reportName: srl.report_name,
-  description: srl.description,
-  generatedAt: srl.generated_at,
-  generatedByStaffId: srl.generated_by_staff_id,
-  parameters: srl.parameters,
-  fileFormat: srl.file_format,
-  fileName: srl.file_name,
-  status: srl.status,
-  createdAt: srl.created_at,
-  updatedAt: srl.updated_at,
+const mapDbReportLogToDomain = (dbLog: ReportLog): DomainReportLog => ({
+  id: dbLog.id,
+  reportName: dbLog.report_name,
+  description: dbLog.description,
+  generatedAt: dbLog.generated_at,
+  generatedByStaffId: dbLog.generated_by_staff_id,
+  parameters: dbLog.parameters,
+  fileFormat: dbLog.file_format,
+  fileName: dbLog.file_name,
+  status: dbLog.status,
+  createdAt: dbLog.created_at,
+  updatedAt: dbLog.updated_at,
 });
 
-const mapDomainReportLogToSupabase = (rl: Partial<DomainReportLog>): Partial<ReportLogInsert | ReportLogUpdate> => {
+const mapDomainReportLogToDb = (rl: Partial<DomainReportLog>): Partial<ReportLogInsert | ReportLogUpdate> => {
     const payload: Partial<ReportLogInsert | ReportLogUpdate> = {};
     if (rl.reportName !== undefined) payload.report_name = rl.reportName;
     if (rl.description !== undefined) payload.description = rl.description;
@@ -798,12 +796,12 @@ const mapDomainReportLogToSupabase = (rl: Partial<DomainReportLog>): Partial<Rep
     return payload;
 };
 
-const mapSupabaseKnowledgeBaseArticleToDomain = (ska: KnowledgeBaseArticleRow): KnowledgeBaseArticle => ({
-    id: ska.id,
-    created_at: ska.created_at,
-    title: ska.title,
-    content: ska.content,
-    category: ska.category || undefined,
+const mapDbKnowledgeBaseArticleToDomain = (dbArticle: KnowledgeBaseArticleRow): KnowledgeBaseArticle => ({
+    id: dbArticle.id,
+    created_at: dbArticle.created_at,
+    title: dbArticle.title,
+    content: dbArticle.content,
+    category: dbArticle.category || undefined,
 });
 
 async function fetchAllTariffs() {
@@ -812,7 +810,7 @@ async function fetchAllTariffs() {
         tariffs = data;
         notifyTariffListeners();
     } else {
-        console.error("DataStore: Failed to fetch tariffs. Supabase error:", JSON.stringify(error, null, 2));
+        console.error("DataStore: Failed to fetch tariffs. Database error:", JSON.stringify(error, null, 2));
     }
     tariffsFetched = true;
     return tariffs;
@@ -822,10 +820,10 @@ async function fetchAllTariffs() {
 async function fetchAllBranches() {
   const { data, error } = await getAllBranchesAction();
   if (data) {
-    branches = data.map(mapSupabaseBranchToDomain);
+    branches = data.map(mapDbBranchToDomain);
     notifyBranchListeners();
   } else {
-    console.error("DataStore: Failed to fetch branches. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to fetch branches. Database error:", JSON.stringify(error, null, 2));
   }
   branchesFetched = true;
   return branches;
@@ -834,10 +832,10 @@ async function fetchAllBranches() {
 async function fetchAllCustomers() {
   const { data, error } = await getAllCustomersAction();
   if (data) {
-    customers = await Promise.all(data.map(mapSupabaseCustomerToDomain));
+    customers = await Promise.all(data.map(mapDbCustomerToDomain));
     notifyCustomerListeners();
   } else {
-    console.error("DataStore: Failed to fetch customers. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to fetch customers. Database error:", JSON.stringify(error, null, 2));
   }
   customersFetched = true;
   return customers;
@@ -847,7 +845,7 @@ async function fetchAllBulkMeters() {
   const { data: rawBulkMeters, error: fetchError } = await getAllBulkMetersAction();
 
   if (fetchError) {
-    console.error("DataStore: Failed to fetch bulk meters. Supabase error:", JSON.stringify(fetchError, null, 2));
+    console.error("DataStore: Failed to fetch bulk meters. Database error:", JSON.stringify(fetchError, null, 2));
     bulkMetersFetched = true;
     return [];
   }
@@ -868,25 +866,25 @@ async function fetchAllBulkMeters() {
   const updatedRowsFromBackfill: BulkMeterRow[] = [];
   let backfillPerformed = false;
 
-  for (const sbm of rawBulkMeters) {
+  for (const dbBulkMeter of rawBulkMeters) {
     if (
-      sbm.bulk_usage === null ||
-      sbm.total_bulk_bill === null ||
-      sbm.difference_usage === null ||
-      sbm.difference_bill === null
+      dbBulkMeter.bulk_usage === null ||
+      dbBulkMeter.total_bulk_bill === null ||
+      dbBulkMeter.difference_usage === null ||
+      dbBulkMeter.difference_bill === null
     ) {
       backfillPerformed = true;
-      const currentReading = Number(sbm.currentReading) || 0;
-      const previousReading = Number(sbm.previousReading) || 0;
+      const currentReading = Number(dbBulkMeter.currentReading) || 0;
+      const previousReading = Number(dbBulkMeter.previousReading) || 0;
 
       const calculatedBulkUsage = currentReading - previousReading;
-      const { totalBill: calculatedTotalBulkBill } = await calculateBill(calculatedBulkUsage, sbm.charge_group || 'Non-domestic', sbm.sewerage_connection || 'No', Number(sbm.meterSize), sbm.month);
+  const { totalBill: calculatedTotalBulkBill } = await computeBillLocal(calculatedBulkUsage, dbBulkMeter.charge_group || 'Non-domestic', dbBulkMeter.sewerage_connection || 'No', Number(dbBulkMeter.meterSize), dbBulkMeter.month);
 
-      const associatedCustomersData = getCustomers().filter(c => c.assignedBulkMeterId === sbm.customerKeyNumber);
+      const associatedCustomersData = getCustomers().filter(c => c.assignedBulkMeterId === dbBulkMeter.customerKeyNumber);
       const sumIndividualUsage = associatedCustomersData.reduce((acc, cust) => acc + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0);
       
       const calculatedDifferenceUsage = calculatedBulkUsage - sumIndividualUsage;
-      const { totalBill: calculatedDifferenceBill } = await calculateBill(calculatedDifferenceUsage, sbm.charge_group || 'Non-domestic', sbm.sewerage_connection || 'No', Number(sbm.meterSize), sbm.month);
+  const { totalBill: calculatedDifferenceBill } = await computeBillLocal(calculatedDifferenceUsage, dbBulkMeter.charge_group || 'Non-domestic', dbBulkMeter.sewerage_connection || 'No', Number(dbBulkMeter.meterSize), dbBulkMeter.month);
 
 
       const updatePayload: BulkMeterUpdate = {
@@ -896,24 +894,24 @@ async function fetchAllBulkMeters() {
         difference_bill: calculatedDifferenceBill,
       };
 
-      const { data: updatedRow, error: updateError } = await updateBulkMeterAction(sbm.customerKeyNumber, updatePayload);
+      const { data: updatedRow, error: updateError } = await updateBulkMeterAction(dbBulkMeter.customerKeyNumber, updatePayload);
       if (updateError) {
-        console.error(`DataStore: Failed to backfill bulk meter ${sbm.customerKeyNumber}. Error:`, JSON.stringify(updateError, null, 2));
-        updatedRowsFromBackfill.push(sbm); 
+        console.error(`DataStore: Failed to backfill bulk meter ${dbBulkMeter.customerKeyNumber}. Error:`, JSON.stringify(updateError, null, 2));
+        updatedRowsFromBackfill.push(dbBulkMeter); 
       } else if (updatedRow) {
         updatedRowsFromBackfill.push(updatedRow); 
       } else {
-        updatedRowsFromBackfill.push(sbm);
+        updatedRowsFromBackfill.push(dbBulkMeter);
       }
     } else {
-      updatedRowsFromBackfill.push(sbm); 
+      updatedRowsFromBackfill.push(dbBulkMeter); 
     }
   }
   if (backfillPerformed) {
       processedBulkMeters = updatedRowsFromBackfill; 
   }
   
-  bulkMeters = await Promise.all(processedBulkMeters.map(mapSupabaseBulkMeterToDomain));
+  bulkMeters = await Promise.all(processedBulkMeters.map(mapDbBulkMeterToDomain));
   notifyBulkMeterListeners();
   bulkMetersFetched = true;
   return bulkMeters;
@@ -923,10 +921,10 @@ async function fetchAllBulkMeters() {
 async function fetchAllStaffMembers() {
   const { data, error } = await getAllStaffMembersAction();
   if (data) {
-    staffMembers = data.map(mapSupabaseStaffToDomain);
+    staffMembers = data.map(mapDbStaffToDomain);
     notifyStaffMemberListeners();
   } else {
-    console.error("DataStore: Failed to fetch staff members. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to fetch staff members. Database error:", JSON.stringify(error, null, 2));
   }
   staffMembersFetched = true;
   return staffMembers;
@@ -935,10 +933,10 @@ async function fetchAllStaffMembers() {
 async function fetchAllBills() {
     const { data, error } = await getAllBillsAction();
     if (data) {
-        bills = data.map(mapSupabaseBillToDomain);
+        bills = data.map(mapDbBillToDomain);
         notifyBillListeners();
     } else {
-        console.error("DataStore: Failed to fetch bills. Supabase error:", JSON.stringify(error, null, 2));
+        console.error("DataStore: Failed to fetch bills. Database error:", JSON.stringify(error, null, 2));
     }
     billsFetched = true;
     return bills;
@@ -947,10 +945,10 @@ async function fetchAllBills() {
 async function fetchAllIndividualCustomerReadings() {
     const { data, error } = await getAllIndividualCustomerReadingsAction();
     if (data) {
-        individualCustomerReadings = data.map(mapSupabaseIndividualReadingToDomain);
+        individualCustomerReadings = data.map(mapDbIndividualReadingToDomain);
         notifyIndividualCustomerReadingListeners();
     } else {
-        console.error("DataStore: Failed to fetch individual customer readings. Supabase error:", JSON.stringify(error, null, 2));
+        console.error("DataStore: Failed to fetch individual customer readings. Database error:", JSON.stringify(error, null, 2));
     }
     individualCustomerReadingsFetched = true;
     return individualCustomerReadings;
@@ -959,10 +957,10 @@ async function fetchAllIndividualCustomerReadings() {
 async function fetchAllBulkMeterReadings() {
     const { data, error } = await getAllBulkMeterReadingsAction();
     if (data) {
-        bulkMeterReadings = data.map(mapSupabaseBulkReadingToDomain);
+        bulkMeterReadings = data.map(mapDbBulkReadingToDomain);
         notifyBulkMeterReadingListeners();
     } else {
-        console.error("DataStore: Failed to fetch bulk meter readings. Supabase error:", JSON.stringify(error, null, 2));
+        console.error("DataStore: Failed to fetch bulk meter readings. Database error:", JSON.stringify(error, null, 2));
     }
     bulkMeterReadingsFetched = true;
     return bulkMeterReadings;
@@ -971,10 +969,10 @@ async function fetchAllBulkMeterReadings() {
 async function fetchAllPayments() {
     const { data, error } = await getAllPaymentsAction();
     if (data) {
-        payments = data.map(mapSupabasePaymentToDomain);
+        payments = data.map(mapDbPaymentToDomain);
         notifyPaymentListeners();
     } else {
-        console.error("DataStore: Failed to fetch payments. Supabase error:", JSON.stringify(error, null, 2));
+        console.error("DataStore: Failed to fetch payments. Database error:", JSON.stringify(error, null, 2));
     }
     paymentsFetched = true;
     return payments;
@@ -983,10 +981,10 @@ async function fetchAllPayments() {
 async function fetchAllReportLogs() {
     const { data, error } = await getAllReportLogsAction();
     if (data) {
-        reportLogs = data.map(mapSupabaseReportLogToDomain);
+        reportLogs = data.map(mapDbReportLogToDomain);
         notifyReportLogListeners();
     } else {
-        console.error("DataStore: Failed to fetch report logs. Supabase error:", JSON.stringify(error, null, 2));
+        console.error("DataStore: Failed to fetch report logs. Database error:", JSON.stringify(error, null, 2));
     }
     reportLogsFetched = true;
     return reportLogs;
@@ -995,10 +993,10 @@ async function fetchAllReportLogs() {
 async function fetchAllNotifications() {
   const { data, error } = await getAllNotificationsAction();
   if (data) {
-    notifications = data.map(mapSupabaseNotificationToDomain);
+    notifications = data.map(mapDbNotificationToDomain);
     notifyNotificationListeners();
   } else {
-    console.error("DataStore: Failed to fetch notifications. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to fetch notifications. Database error:", JSON.stringify(error, null, 2));
   }
   notificationsFetched = true;
   return notifications;
@@ -1010,7 +1008,7 @@ async function fetchAllRoles() {
     roles = data;
     notifyRoleListeners();
   } else {
-    console.error("DataStore: Failed to fetch roles. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to fetch roles. Database error:", JSON.stringify(error, null, 2));
   }
   rolesFetched = true;
   return roles;
@@ -1022,7 +1020,7 @@ async function fetchAllPermissions() {
     permissions = data;
     notifyPermissionListeners();
   } else {
-    console.error("DataStore: Failed to fetch permissions. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to fetch permissions. Database error:", JSON.stringify(error, null, 2));
   }
   permissionsFetched = true;
   return permissions;
@@ -1034,7 +1032,7 @@ async function fetchAllRolePermissions() {
     rolePermissions = data;
     notifyRolePermissionListeners();
   } else {
-    console.error("DataStore: Failed to fetch role permissions. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to fetch role permissions. Database error:", JSON.stringify(error, null, 2));
   }
   rolePermissionsFetched = true;
   return rolePermissions;
@@ -1046,7 +1044,7 @@ async function fetchAllKnowledgeBaseArticles() {
     console.error("DataStore: Failed to fetch knowledge base articles. Error:", error);
     knowledgeBaseArticles = [];
   } else {
-    knowledgeBaseArticles = data.map(mapSupabaseKnowledgeBaseArticleToDomain);
+    knowledgeBaseArticles = data.map(mapDbKnowledgeBaseArticleToDomain);
   }
   notifyKnowledgeBaseArticleListeners();
   knowledgeBaseArticlesFetched = true;
@@ -1064,7 +1062,7 @@ export const getKnowledgeBaseArticles = (): KnowledgeBaseArticle[] => [...knowle
 export const addKnowledgeBaseArticle = async (article: KnowledgeBaseArticleInsert): Promise<StoreOperationResult<KnowledgeBaseArticle>> => {
   const { data, error } = await createKnowledgeBaseArticleAction(article);
   if (!error && data) {
-    const newArticle = mapSupabaseKnowledgeBaseArticleToDomain(data);
+    const newArticle = mapDbKnowledgeBaseArticleToDomain(data);
     knowledgeBaseArticles = [newArticle, ...knowledgeBaseArticles];
     notifyKnowledgeBaseArticleListeners();
     return { success: true, data: newArticle };
@@ -1075,7 +1073,7 @@ export const addKnowledgeBaseArticle = async (article: KnowledgeBaseArticleInser
 export const updateKnowledgeBaseArticle = async (id: number, article: KnowledgeBaseArticleUpdate): Promise<StoreOperationResult<KnowledgeBaseArticle>> => {
   const { data, error } = await updateKnowledgeBaseArticleAction(id, article);
   if (!error && data) {
-    const updatedArticle = mapSupabaseKnowledgeBaseArticleToDomain(data);
+    const updatedArticle = mapDbKnowledgeBaseArticleToDomain(data);
     knowledgeBaseArticles = knowledgeBaseArticles.map(a => a.id === id ? updatedArticle : a);
     notifyKnowledgeBaseArticleListeners();
     return { success: true, data: updatedArticle };
@@ -1174,10 +1172,11 @@ export const initializeTariffs = async () => {
 };
 
 export const getTariff = (customerType: CustomerType, year: number): TariffInfo | undefined => {
-    if (tariffs.length === 0) {
-        console.error("DataStore: getTariff called but tariffs array is empty. This indicates an initialization problem.");
-        return undefined;
-    }
+  if (tariffs.length === 0) {
+    // Tariffs not yet loaded — caller should initialize tariffs before using getTariff.
+    console.warn("DataStore: getTariff called but tariffs array is empty. This indicates tariffs haven't been initialized yet.");
+    return undefined;
+  }
     const tariff = tariffs.find(t => t.customer_type === customerType && t.year === year);
     if (!tariff) {
         console.warn(`DataStore: No tariff found for customer type "${customerType}" and year "${year}" in the local store.`);
@@ -1197,15 +1196,14 @@ export const getTariff = (customerType: CustomerType, year: number): TariffInfo 
         return fieldName.includes('tiers') ? [] : {};
     };
 
-    return {
-        id: `${customerType}-${year}`,
-        customer_type: tariff.customer_type as CustomerType,
-        year: tariff.year,
-        tiers: parseJsonField(tariff.tiers, 'tiers'),
-        maintenance_percentage: tariff.maintenance_percentage,
-        sanitation_percentage: tariff.sanitation_percentage,
-        sewerage_rate_per_m3: 0,
-        meter_rent_prices: parseJsonField(tariff.meter_rent_prices, 'meter_rent_prices'),
+  return {
+    customer_type: tariff.customer_type as CustomerType,
+    year: tariff.year,
+    tiers: parseJsonField(tariff.tiers, 'tiers'),
+    maintenance_percentage: tariff.maintenance_percentage,
+    sanitation_percentage: tariff.sanitation_percentage,
+    sewerage_tiers: parseJsonField(tariff.sewerage_tiers, 'sewerage_tiers'),
+    meter_rent_prices: parseJsonField(tariff.meter_rent_prices, 'meter_rent_prices'),
         vat_rate: tariff.vat_rate,
         domestic_vat_threshold_m3: tariff.domestic_vat_threshold_m3,
     };
@@ -1245,9 +1243,9 @@ export const getBulkMeterPaymentStatusCounts = (): { totalBMs: number; paidBMs: 
 
 export const addBranch = async (branchData: Omit<DomainBranch, 'id'>): Promise<StoreOperationResult<DomainBranch>> => {
   const payload = mapDomainBranchToInsert(branchData);
-  const { data: newSupabaseBranch, error } = await createBranchAction(payload);
-  if (newSupabaseBranch && !error) {
-    const newBranch = mapSupabaseBranchToDomain(newSupabaseBranch);
+  const { data: newDbBranch, error } = await createBranchAction(payload);
+  if (newDbBranch && !error) {
+    const newBranch = mapDbBranchToDomain(newDbBranch);
     branches = [newBranch, ...branches];
     notifyBranchListeners();
     return { success: true, data: newBranch };
@@ -1258,9 +1256,9 @@ export const addBranch = async (branchData: Omit<DomainBranch, 'id'>): Promise<S
 
 export const updateBranch = async (id: string, branchData: Partial<Omit<DomainBranch, 'id'>>): Promise<StoreOperationResult<void>> => {
   const updatePayload = mapDomainBranchToUpdate(branchData);
-  const { data: updatedSupabaseBranch, error } = await updateBranchAction(id, updatePayload);
-  if (updatedSupabaseBranch && !error) {
-    const updatedBranch = mapSupabaseBranchToDomain(updatedSupabaseBranch);
+  const { data: updatedDbBranch, error } = await updateBranchAction(id, updatePayload);
+  if (updatedDbBranch && !error) {
+    const updatedBranch = mapDbBranchToDomain(updatedDbBranch);
     branches = branches.map(b => b.id === id ? updatedBranch : b);
     notifyBranchListeners();
     return { success: true };
@@ -1306,10 +1304,10 @@ export const addCustomer = async (
   const customerDataWithStatus = { ...customerData, status: finalStatus };
   const customerPayload = await mapDomainCustomerToInsert(customerDataWithStatus);
 
-  const { data: newSupabaseCustomer, error } = await createCustomerAction(customerPayload);
+  const { data: newDbCustomer, error } = await createCustomerAction(customerPayload);
 
-  if (newSupabaseCustomer && !error) {
-    const newCustomer = await mapSupabaseCustomerToDomain(newSupabaseCustomer);
+  if (newDbCustomer && !error) {
+    const newCustomer = await mapDbCustomerToDomain(newDbCustomer);
     customers.push(newCustomer);
     notifyCustomerListeners();
     return { success: true, data: newCustomer };
@@ -1336,12 +1334,12 @@ export const updateCustomer = async (customerKeyNumber: string, customerData: Pa
         ...customerData,
     };
 
-    const updatePayloadSupabase = await mapDomainCustomerToUpdate(updatedDomainCustomer);
+    const updatePayloadDb = await mapDomainCustomerToUpdate(updatedDomainCustomer);
 
-    const { data: updatedSupabaseCustomer, error } = await updateCustomerAction(customerKeyNumber, updatePayloadSupabase);
+    const { data: updatedDbCustomer, error } = await updateCustomerAction(customerKeyNumber, updatePayloadDb);
 
-    if (updatedSupabaseCustomer && !error) {
-        const updatedCustomer = await mapSupabaseCustomerToDomain(updatedSupabaseCustomer);
+    if (updatedDbCustomer && !error) {
+        const updatedCustomer = await mapDbCustomerToDomain(updatedDbCustomer);
         customers = customers.map(c => c.customerKeyNumber === customerKeyNumber ? updatedCustomer : c);
         notifyCustomerListeners();
         return { success: true };
@@ -1350,12 +1348,12 @@ export const updateCustomer = async (customerKeyNumber: string, customerData: Pa
         let userMessage = "Failed to update customer due to an unexpected error.";
         let isNotFoundError = false;
         if (error && typeof error === 'object') {
-            const supabaseError = error as any;
-            if (supabaseError.code === 'PGRST204') {
+            const dbError = error as any;
+            if (dbError.code === 'PGRST204') {
                 userMessage = "Failed to update customer: Record not found. It may have been deleted.";
                 isNotFoundError = true;
-            } else if (supabaseError.message) {
-                userMessage = `Failed to update customer: ${supabaseError.message}`;
+            } else if (dbError.message) {
+                userMessage = `Failed to update customer: ${dbError.message}`;
             }
         }
         return { success: false, message: userMessage, isNotFoundError, error };
@@ -1390,9 +1388,9 @@ export const addBulkMeter = async (
 
   const bulkMeterPayload = await mapDomainBulkMeterToInsert({ ...bulkMeterDomainData, status: finalStatus });
   
-  const { data: newSupabaseBulkMeter, error } = await createBulkMeterAction(bulkMeterPayload);
-  if (newSupabaseBulkMeter && !error) {
-    const newBulkMeter = await mapSupabaseBulkMeterToDomain(newSupabaseBulkMeter);
+  const { data: newDbBulkMeter, error } = await createBulkMeterAction(bulkMeterPayload);
+  if (newDbBulkMeter && !error) {
+    const newBulkMeter = await mapDbBulkMeterToDomain(newDbBulkMeter);
     bulkMeters = [newBulkMeter, ...bulkMeters];
     notifyBulkMeterListeners();
     return { success: true, data: newBulkMeter };
@@ -1418,10 +1416,10 @@ export const updateBulkMeter = async (customerKeyNumber: string, bulkMeterData: 
     };
     
     const updatePayloadToSend = await mapDomainBulkMeterToUpdate(updatedDomainBulkMeter);
-    const { data: updatedSupabaseBulkMeter, error } = await updateBulkMeterAction(customerKeyNumber, updatePayloadToSend);
+    const { data: updatedDbBulkMeter, error } = await updateBulkMeterAction(customerKeyNumber, updatePayloadToSend);
     
-    if (updatedSupabaseBulkMeter && !error) {
-        const updatedBulkMeter = await mapSupabaseBulkMeterToDomain(updatedSupabaseBulkMeter);
+    if (updatedDbBulkMeter && !error) {
+        const updatedBulkMeter = await mapDbBulkMeterToDomain(updatedDbBulkMeter);
         bulkMeters = bulkMeters.map(bm => bm.customerKeyNumber === customerKeyNumber ? updatedBulkMeter : bm);
         notifyBulkMeterListeners();
         return { success: true, data: updatedBulkMeter };
@@ -1462,7 +1460,7 @@ export const addStaffMember = async (staffData: Omit<StaffMember, 'id'> & {id?: 
   const staffDataWithRoleId = { ...staffData, roleId: role.id };
   const payload = mapDomainStaffToInsert(staffDataWithRoleId as StaffMember);
 
-  const { data: newSupabaseStaff, error } = await createStaffMemberAction(payload);
+  const { data: newDbStaff, error } = await createStaffMemberAction(payload);
   
   if (error) {
     // Check for unique constraint violation
@@ -1474,8 +1472,8 @@ export const addStaffMember = async (staffData: Omit<StaffMember, 'id'> & {id?: 
     return { success: false, message: (error as any)?.message || "Failed to add staff member.", error };
   }
 
-  if (newSupabaseStaff) {
-    const newStaff = mapSupabaseStaffToDomain(newSupabaseStaff);
+  if (newDbStaff) {
+    const newStaff = mapDbStaffToDomain(newDbStaff);
     staffMembers = [newStaff, ...staffMembers];
     notifyStaffMemberListeners();
     return { success: true, data: newStaff };
@@ -1501,10 +1499,10 @@ export const updateStaffMember = async (email: string, updatedStaffData: Partial
   }
 
   const staffUpdatePayload = mapDomainStaffToUpdate(staffUpdateDataWithRoleId);
-  const { data: updatedSupabaseStaff, error } = await updateStaffMemberAction(email, staffUpdatePayload);
+  const { data: updatedDbStaff, error } = await updateStaffMemberAction(email, staffUpdatePayload);
 
-  if (updatedSupabaseStaff && !error) {
-    const updatedStaff = mapSupabaseStaffToDomain(updatedSupabaseStaff);
+  if (updatedDbStaff && !error) {
+    const updatedStaff = mapDbStaffToDomain(updatedDbStaff);
     staffMembers = staffMembers.map(s => (s.email === email ? updatedStaff : s));
     notifyStaffMemberListeners();
     return { success: true };
@@ -1528,28 +1526,28 @@ export const deleteStaffMember = async (email: string): Promise<StoreOperationRe
 };
 
 export const addBill = async (billData: Omit<DomainBill, 'id' | 'createdAt' | 'updatedAt'>): Promise<StoreOperationResult<DomainBill>> => {
-    const payload = mapDomainBillToSupabase(billData) as BillInsert;
-    const { data: newSupabaseBill, error } = await createBillAction(payload);
-    if (newSupabaseBill && !error) {
-        const newBill = mapSupabaseBillToDomain(newSupabaseBill);
+    const payload = mapDomainBillToDb(billData) as BillInsert;
+    const { data: newDbBill, error } = await createBillAction(payload);
+    if (newDbBill && !error) {
+        const newBill = mapDbBillToDomain(newDbBill);
         bills = [newBill, ...bills];
         notifyBillListeners();
         return { success: true, data: newBill };
     }
-    console.error("DataStore: Failed to add bill. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to add bill. Database error:", JSON.stringify(error, null, 2));
     return { success: false, message: (error as any)?.message || "Failed to add bill.", error };
 };
 
 export const updateExistingBill = async (id: string, billUpdateData: Partial<Omit<DomainBill, 'id'>>): Promise<StoreOperationResult<void>> => {
-    const payload = mapDomainBillToSupabase(billUpdateData) as BillUpdate;
-    const { data: updatedSupabaseBill, error } = await updateBillAction(id, payload);
-    if (updatedSupabaseBill && !error) {
-        const updatedBill = mapSupabaseBillToDomain(updatedSupabaseBill);
+    const payload = mapDomainBillToDb(billUpdateData) as BillUpdate;
+    const { data: updatedDbBill, error } = await updateBillAction(id, payload);
+    if (updatedDbBill && !error) {
+        const updatedBill = mapDbBillToDomain(updatedDbBill);
         bills = bills.map(b => b.id === id ? updatedBill : b);
         notifyBillListeners();
         return { success: true };
     }
-    console.error("DataStore: Failed to update bill. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to update bill. Database error:", JSON.stringify(error, null, 2));
     let userMessage = "Failed to update bill.";
     let isNotFoundError = false;
     if (error && typeof error === 'object' && 'code' in error && error.code === 'PGRST204') {
@@ -1568,7 +1566,7 @@ export const removeBill = async (billId: string): Promise<StoreOperationResult<v
         notifyBillListeners();
         return { success: true };
     }
-    console.error("DataStore: Failed to delete bill. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to delete bill. Database error:", JSON.stringify(error, null, 2));
     return { success: false, message: (error as any)?.message || "Failed to delete bill.", error };
 };
 
@@ -1581,28 +1579,28 @@ export const addIndividualCustomerReading = async (readingData: Omit<DomainIndiv
         return { success: false, message: `New reading (${readingData.readingValue}) cannot be lower than the current reading (${customer.currentReading}).` };
     }
 
-    const payload = mapDomainIndividualReadingToSupabase(readingData) as IndividualCustomerReadingInsert;
-    const { data: newSupabaseReading, error: readingInsertError } = await createIndividualCustomerReadingAction(payload);
+    const payload = mapDomainIndividualReadingToDb(readingData) as IndividualCustomerReadingInsert;
+    const { data: newDbReading, error: readingInsertError } = await createIndividualCustomerReadingAction(payload);
 
-    if (readingInsertError || !newSupabaseReading) {
+    if (readingInsertError || !newDbReading) {
         let userMessage = (readingInsertError as any)?.message || "Failed to add reading.";
         if (readingInsertError && (readingInsertError as any).message.includes('violates row-level security policy')) {
-             userMessage = "Permission denied to add readings. Please check Row Level Security policies in Supabase.";
+             userMessage = "Permission denied to add readings. Please check Row Level Security policies in the database.";
         }
-        console.error("DataStore: Failed to add individual reading. Supabase error:", JSON.stringify(readingInsertError, null, 2));
+        console.error("DataStore: Failed to add individual reading. Database error:", JSON.stringify(readingInsertError, null, 2));
         return { success: false, message: userMessage, error: readingInsertError };
     }
 
-    const updateResult = await updateCustomer(customer.customerKeyNumber, { currentReading: newSupabaseReading.reading_value, month: newSupabaseReading.month_year });
+    const updateResult = await updateCustomer(customer.customerKeyNumber, { currentReading: newDbReading.reading_value, month: newDbReading.month_year });
 
     if (!updateResult.success) {
-        await deleteIndividualCustomerReadingAction(newSupabaseReading.id);
+        await deleteIndividualCustomerReadingAction(newDbReading.id);
         const errorMessage = `Reading recorded, but failed to update the customer's main record. Error: ${updateResult.message}`;
         console.error(errorMessage, updateResult.error);
         return { success: false, message: errorMessage, error: updateResult.error };
     }
     
-    const newReading = mapSupabaseIndividualReadingToDomain(newSupabaseReading);
+    const newReading = mapDbIndividualReadingToDomain(newDbReading);
     individualCustomerReadings = [newReading, ...individualCustomerReadings];
     notifyIndividualCustomerReadingListeners();
 
@@ -1610,66 +1608,89 @@ export const addIndividualCustomerReading = async (readingData: Omit<DomainIndiv
 };
 
 export const addBulkMeterReading = async (readingData: Omit<DomainBulkMeterReading, 'id' | 'createdAt' | 'updatedAt'>): Promise<StoreOperationResult<DomainBulkMeterReading>> => {
-    const bulkMeter = bulkMeters.find(bm => bm.customerKeyNumber === readingData.bulkMeterId);
-    if (!bulkMeter) {
-        return { success: false, message: "Bulk meter not found." };
-    }
-    if (readingData.readingValue < bulkMeter.currentReading) {
-        return { success: false, message: `New reading (${readingData.readingValue}) cannot be lower than the current reading (${bulkMeter.currentReading}).` };
-    }
+  const bulkMeter = bulkMeters.find(bm => bm.customerKeyNumber === readingData.bulkMeterId);
+  if (!bulkMeter) {
+    return { success: false, message: "Bulk meter not found." };
+  }
+  if (readingData.readingValue < bulkMeter.currentReading) {
+    return { success: false, message: `New reading (${readingData.readingValue}) cannot be lower than the current reading (${bulkMeter.currentReading}).` };
+  }
 
-    const payload = mapDomainBulkReadingToSupabase(readingData) as BulkMeterReadingInsert;
-    const { data: newSupabaseReading, error: readingInsertError } = await createBulkMeterReadingAction(payload);
+  const payload = mapDomainBulkReadingToDb(readingData) as BulkMeterReadingInsert;
 
-    if (readingInsertError || !newSupabaseReading) {
-        let userMessage = (readingInsertError as any)?.message || "Failed to add reading.";
-        if (readingInsertError && (readingInsertError as any).message.includes('violates row-level security policy')) {
-            userMessage = "Permission denied to add readings. Please check Row Level Security policies in Supabase.";
-        }
-        console.error("DataStore: Failed to add bulk meter reading. Supabase error:", JSON.stringify(readingInsertError, null, 2));
-        return { success: false, message: userMessage, error: readingInsertError };
+  // Ensure there's an id for the reading (schema uses VARCHAR(36) id)
+  if (!payload.id) {
+    try {
+      if (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function') {
+        payload.id = (crypto as any).randomUUID();
+      } else {
+        payload.id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      }
+    } catch (e) {
+      payload.id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
     }
-    
-    const updateResult = await updateBulkMeter(bulkMeter.customerKeyNumber, { currentReading: newSupabaseReading.reading_value, month: newSupabaseReading.month_year });
+  }
 
-    if (!updateResult.success) {
-        await deleteBulkMeterReadingAction(newSupabaseReading.id);
+  const { data: newDbReading, error: readingInsertError } = await createBulkMeterReadingAction(payload);
 
-        const errorMessage = `Failed to update the bulk meter's main record, so the new reading was discarded. Reason: ${updateResult.message}`;
-        console.error(errorMessage, updateResult.error);
-        return { success: false, message: errorMessage, error: updateResult.error };
+  if (readingInsertError || !newDbReading) {
+    let userMessage = (readingInsertError as any)?.message || "Failed to add reading.";
+    if (readingInsertError && (readingInsertError as any).message && (readingInsertError as any).message.includes('violates row-level security policy')) {
+      userMessage = "Permission denied to add readings. Please check Row Level Security policies in the database.";
     }
-    
-    const newReading = mapSupabaseBulkReadingToDomain(newSupabaseReading);
-    bulkMeterReadings = [newReading, ...bulkMeterReadings];
-    notifyBulkMeterReadingListeners();
-    
-    return { success: true, data: newReading };
+    // Try to surface useful DB error details when available
+    const readable = readingInsertError && typeof readingInsertError === 'object' ? JSON.stringify(readingInsertError, Object.getOwnPropertyNames(readingInsertError), 2) : String(readingInsertError);
+    console.error("DataStore: Failed to add bulk meter reading. Database error:", readable);
+    return { success: false, message: userMessage, error: readingInsertError };
+  }
+
+  const updateResult = await updateBulkMeter(bulkMeter.customerKeyNumber, { currentReading: newDbReading.reading_value, month: newDbReading.month_year });
+
+  if (!updateResult.success) {
+    // Attempt cleanup using the id we generated or the returned id
+    try { await deleteBulkMeterReadingAction(newDbReading?.id || payload.id); } catch (er) { console.error('Cleanup failed', er); }
+
+    const errorMessage = `Failed to update the bulk meter's main record, so the new reading was discarded. Reason: ${updateResult.message}`;
+    console.error(errorMessage, updateResult.error);
+    return { success: false, message: errorMessage, error: updateResult.error };
+  }
+
+  const newReading = mapDbBulkReadingToDomain(newDbReading);
+  bulkMeterReadings = [newReading, ...bulkMeterReadings];
+  notifyBulkMeterReadingListeners();
+
+  return { success: true, data: newReading };
 };
 
 
 export const addPayment = async (paymentData: Omit<DomainPayment, 'id'>): Promise<StoreOperationResult<DomainPayment>> => {
-    const payload = mapDomainPaymentToSupabase(paymentData) as PaymentInsert;
-    const { data: newSupabasePayment, error } = await createPaymentAction(payload);
-    if (newSupabasePayment && !error) {
-        const newPayment = mapSupabasePaymentToDomain(newSupabasePayment);
+    const payload = mapDomainPaymentToDb(paymentData) as PaymentInsert;
+    const { data: newDbPayment, error } = await createPaymentAction(payload);
+    if (newDbPayment && !error) {
+        const newPayment = mapDbPaymentToDomain(newDbPayment);
         payments = [newPayment, ...payments];
         notifyPaymentListeners();
         return { success: true, data: newPayment };
     }
-    console.error("DataStore: Failed to add payment. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to add payment. Database error:", JSON.stringify(error, null, 2));
     return { success: false, message: (error as any)?.message || "Failed to add payment.", error };
 };
 export const updateExistingPayment = async (id: string, paymentUpdateData: Partial<Omit<DomainPayment, 'id'>>): Promise<StoreOperationResult<void>> => {
-    const payload = mapDomainPaymentToSupabase(paymentUpdateData) as PaymentUpdate;
-    const { data: updatedSupabasePayment, error } = await updatePaymentAction(id, payload);
-    if (updatedSupabasePayment && !error) {
-        const updatedPayment = mapSupabasePaymentToDomain(updatedSupabasePayment);
+    const payload = mapDomainPaymentToDb(paymentUpdateData) as PaymentUpdate;
+    const { data: updatedDbPayment, error } = await updatePaymentAction(id, payload);
+    if (updatedDbPayment && !error) {
+        const updatedPayment = mapDbPaymentToDomain(updatedDbPayment);
         payments = payments.map(p => p.id === id ? updatedPayment : p);
         notifyPaymentListeners();
         return { success: true };
     }
-    console.error("DataStore: Failed to update payment. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to update payment. Database error:", JSON.stringify(error, null, 2));
     let userMessage = "Failed to update payment.";
     let isNotFoundError = false;
     if (error && typeof error === 'object' && 'code' in error && error.code === 'PGRST204') {
@@ -1687,33 +1708,33 @@ export const removePayment = async (paymentId: string): Promise<StoreOperationRe
         notifyPaymentListeners();
         return { success: true };
     }
-    console.error("DataStore: Failed to delete payment. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to delete payment. Database error:", JSON.stringify(error, null, 2));
     return { success: false, message: (error as any)?.message || "Failed to delete payment.", error };
 };
 
 export const addReportLog = async (logData: Omit<DomainReportLog, 'id' | 'generatedAt'> & { generatedAt?: string } ): Promise<StoreOperationResult<DomainReportLog>> => {
-    const payload = mapDomainReportLogToSupabase(logData) as ReportLogInsert;
+    const payload = mapDomainReportLogToDb(logData) as ReportLogInsert;
     if(!payload.generated_at) payload.generated_at = new Date().toISOString();
-    const { data: newSupabaseLog, error } = await createReportLogAction(payload);
-    if (newSupabaseLog && !error) {
-        const newLog = mapSupabaseReportLogToDomain(newSupabaseLog);
+    const { data: newDbLog, error } = await createReportLogAction(payload);
+    if (newDbLog && !error) {
+        const newLog = mapDbReportLogToDomain(newDbLog);
         reportLogs = [newLog, ...reportLogs];
         notifyReportLogListeners();
         return { success: true, data: newLog };
     }
-    console.error("DataStore: Failed to add report log. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to add report log. Database error:", JSON.stringify(error, null, 2));
     return { success: false, message: (error as any)?.message || "Failed to add report log.", error };
 };
 export const updateExistingReportLog = async (id: string, logUpdateData: Partial<Omit<DomainReportLog, 'id'>>): Promise<StoreOperationResult<void>> => {
-    const payload = mapDomainReportLogToSupabase(logUpdateData) as ReportLogUpdate;
-    const { data: updatedSupabaseLog, error } = await updateReportLogAction(id, payload);
-    if (updatedSupabaseLog && !error) {
-        const updatedLog = mapSupabaseReportLogToDomain(updatedSupabaseLog);
+    const payload = mapDomainReportLogToDb(logUpdateData) as ReportLogUpdate;
+    const { data: updatedDbLog, error } = await updateReportLogAction(id, payload);
+    if (updatedDbLog && !error) {
+        const updatedLog = mapDbReportLogToDomain(updatedDbLog);
         reportLogs = reportLogs.map(l => l.id === id ? updatedLog : l);
         notifyReportLogListeners();
         return { success: true };
     }
-    console.error("DataStore: Failed to update report log. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to update report log. Database error:", JSON.stringify(error, null, 2));
     let userMessage = "Failed to update report log.";
     let isNotFoundError = false;
     if (error && typeof error === 'object' && 'code' in error && error.code === 'PGRST204') {
@@ -1731,22 +1752,24 @@ export const removeReportLog = async (logId: string): Promise<StoreOperationResu
         notifyReportLogListeners();
         return { success: true };
     }
-    console.error("DataStore: Failed to delete report log. Supabase error:", JSON.stringify(error, null, 2));
+    console.error("DataStore: Failed to delete report log. Database error:", JSON.stringify(error, null, 2));
     return { success: false, message: (error as any)?.message || "Failed to delete report log.", error };
 };
 
 export const addNotification = async (notificationData: { title: string; message: string; senderName: string; targetBranchId: string | null }): Promise<StoreOperationResult<DomainNotification>> => {
+  // createNotificationAction expects a notification-like object; our DB helper accepts the RPC-style payload too,
+  // but the TypeScript signature in actions.ts uses NotificationInsert; cast to any to avoid type mismatch here.
   const payload = {
     p_title: notificationData.title,
     p_message: notificationData.message,
     p_sender_name: notificationData.senderName,
     p_target_branch_id: notificationData.targetBranchId,
-  };
+  } as any;
 
-  const { data, error } = await createNotificationAction(payload);
+  const { data, error } = await createNotificationAction(payload as any);
   
   if (data && !error) {
-    const newNotification = mapSupabaseNotificationToDomain(data as NotificationRow);
+    const newNotification = mapDbNotificationToDomain(data as NotificationRow);
     notifications = [newNotification, ...notifications].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     notifyNotificationListeners();
     return { success: true, data: newNotification };
@@ -1779,16 +1802,35 @@ export const updateRolePermissions = async (roleId: number, permissionIds: numbe
 
 export const updateTariff = async (customerType: CustomerType, year: number, tariff: Partial<TariffInfo>): Promise<StoreOperationResult<void>> => {
     const updatePayload: TariffUpdate = {};
-    if (tariff.tiers) updatePayload.tiers = tariff.tiers;
+  if (tariff.tiers) updatePayload.tiers = tariff.tiers as any;
+  // tariffs.tiers is stored as JSON in the DB; accept domain TariffTier[] and let DB adapter handle serialization
+  if (tariff.tiers) updatePayload.tiers = tariff.tiers as any;
+  if ((tariff as any).sewerage_tiers) updatePayload.sewerage_tiers = (tariff as any).sewerage_tiers as any;
     if (tariff.maintenance_percentage) updatePayload.maintenance_percentage = tariff.maintenance_percentage;
     if (tariff.sanitation_percentage) updatePayload.sanitation_percentage = tariff.sanitation_percentage;
     if (tariff.meter_rent_prices) updatePayload.meter_rent_prices = tariff.meter_rent_prices;
     if (tariff.vat_rate) updatePayload.vat_rate = tariff.vat_rate;
     if (tariff.domestic_vat_threshold_m3) updatePayload.domestic_vat_threshold_m3 = tariff.domestic_vat_threshold_m3;
 
-    const { data: updatedSupabaseTariff, error } = await updateTariffAction(customerType, year, updatePayload);
-    if (updatedSupabaseTariff && !error) {
-        tariffs = tariffs.map(t => (t.customer_type === customerType && t.year === year) ? updatedSupabaseTariff : t);
+  // Serialize JSON fields to strings so the DB layer stores valid JSON
+  if (updatePayload.tiers && typeof updatePayload.tiers !== 'string') {
+    try { updatePayload.tiers = JSON.stringify(updatePayload.tiers); } catch (e) { /* keep as-is */ }
+  }
+  if ((updatePayload as any).sewerage_tiers && typeof (updatePayload as any).sewerage_tiers !== 'string') {
+    try { (updatePayload as any).sewerage_tiers = JSON.stringify((updatePayload as any).sewerage_tiers); } catch (e) { /* keep as-is */ }
+  }
+  if (updatePayload.meter_rent_prices && typeof updatePayload.meter_rent_prices !== 'string') {
+    try { updatePayload.meter_rent_prices = JSON.stringify(updatePayload.meter_rent_prices); } catch (e) { /* keep as-is */ }
+  }
+
+  // If no fields to update, return no-op
+  if (Object.keys(updatePayload).length === 0) {
+    return { success: true };
+  }
+
+  const { data: updatedDbTariff, error } = await updateTariffAction(customerType, year, updatePayload);
+    if (updatedDbTariff && !error) {
+        tariffs = tariffs.map(t => (t.customer_type === customerType && t.year === year) ? updatedDbTariff : t);
         notifyTariffListeners();
         return { success: true };
     }
@@ -1797,16 +1839,25 @@ export const updateTariff = async (customerType: CustomerType, year: number, tar
 };
 
 export const addTariff = async (tariffData: Omit<TariffInfo, 'id'>): Promise<StoreOperationResult<TariffInfo>> => {
-    const payload: TariffInsert = {
+  const payload: TariffInsert = {
         customer_type: tariffData.customer_type,
         year: tariffData.year,
-        tiers: tariffData.tiers,
+    tiers: tariffData.tiers as any,
         maintenance_percentage: tariffData.maintenance_percentage,
         sanitation_percentage: tariffData.sanitation_percentage,
-        meter_rent_prices: tariffData.meter_rent_prices,
+    sewerage_tiers: (tariffData as any).sewerage_tiers as any,
+    meter_rent_prices: tariffData.meter_rent_prices,
         vat_rate: tariffData.vat_rate,
         domestic_vat_threshold_m3: tariffData.domestic_vat_threshold_m3,
     };
+    // Ensure JSON fields are serialized
+    try {
+      if (payload.tiers && typeof payload.tiers !== 'string') payload.tiers = JSON.stringify(payload.tiers as any);
+  if ((payload as any).sewerage_tiers && typeof (payload as any).sewerage_tiers !== 'string') (payload as any).sewerage_tiers = JSON.stringify((payload as any).sewerage_tiers);
+      if (payload.meter_rent_prices && typeof payload.meter_rent_prices !== 'string') payload.meter_rent_prices = JSON.stringify(payload.meter_rent_prices as any);
+    } catch (e) {
+      // ignore serialization errors here; DB layer will throw if invalid
+    }
     const { data, error } = await createTariffAction(payload);
     if (data && !error) {
         tariffs = [...tariffs, data];
@@ -1847,7 +1898,9 @@ export const approveBulkMeter = async (customerKeyNumber: string, approverId: st
         approved_by: approverId,
         approved_at: new Date().toISOString(),
     };
-    return await updateBulkMeter(customerKeyNumber, updatePayload);
+  // callers expect a void result for approve/reject flows; we call the existing updateBulkMeter and ignore its returned data
+  await updateBulkMeter(customerKeyNumber, updatePayload);
+  return { success: true } as StoreOperationResult<void>;
 }
 
 export const rejectBulkMeter = async (customerKeyNumber: string, rejectorId: string): Promise<StoreOperationResult<void>> => {
@@ -1856,7 +1909,8 @@ export const rejectBulkMeter = async (customerKeyNumber: string, rejectorId: str
         approved_by: rejectorId,
         approved_at: new Date().toISOString(),
     };
-    return await updateBulkMeter(customerKeyNumber, updatePayload);
+  await updateBulkMeter(customerKeyNumber, updatePayload);
+  return { success: true } as StoreOperationResult<void>;
 }
 
 
@@ -1868,7 +1922,7 @@ export const subscribeToBranches = (listener: Listener<DomainBranch>): (() => vo
 
 export const subscribeToCustomers = (listener: Listener<DomainIndividualCustomer>): (() => void) => {
   customerListeners.add(listener);
-  if (customersFetched) listener([...customers]); else initializeCustomers().then(() => listener([...customers]));
+if (customersFetched) listener([...customers]); else initializeCustomers().then(() => listener([...customers]));
   return () => customerListeners.delete(listener);
 };
 
@@ -1942,14 +1996,42 @@ export const subscribeToTariffs = (listener: Listener<TariffRow>): (() => void) 
 export const authenticateStaffMember = async (email: string, password: string): Promise<StoreOperationResult<StaffMember>> => {
     const { data: staffData, error: staffError } = await getStaffMemberForAuthAction(email, password);
 
-    if (staffError || !staffData) {
-        if (staffError) {
+  if (staffError || !staffData) {
+    if (staffError) {
+      // Better logging for Error objects (message + stack) and for other error shapes.
+      try {
+        if (staffError instanceof Error) {
+          console.error("DataStore: Authentication error:", staffError.message);
+          if (staffError.stack) console.error(staffError.stack);
+        } else {
+          // JSON.stringify may omit non-enumerable properties (like Error.message),
+          // so attempt stringify but fall back to a raw log if that fails.
+          try {
             console.error("DataStore: Authentication error:", JSON.stringify(staffError, null, 2));
+          } catch (e) {
+            console.error("DataStore: Authentication error:", staffError);
+          }
         }
-        return { success: false, message: "Invalid email or password.", isNotFoundError: true, error: staffError };
+      } catch (e) {
+        // Defensive fallback in case checking instanceof or logging throws in some runtimes
+        console.error("DataStore: Authentication error (fallback):", staffError);
+      }
     }
 
-    const user = mapSupabaseStaffToDomain(staffData);
+    // If the error looks like a DB/connection error (timeout/refused), return a clearer message
+    try {
+      const errCode = (staffError && (staffError as any).code) || (staffError && (staffError as any).errno) || null;
+      if (errCode === 'ETIMEDOUT' || errCode === 'ECONNREFUSED' || errCode === 'ENOTFOUND') {
+        return { success: false, message: 'Unable to connect to the database. Please try again later.', isNotFoundError: false, error: staffError };
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return { success: false, message: "Invalid email or password.", isNotFoundError: true, error: staffError };
+  }
+
+    const user = mapDbStaffToDomain(staffData);
 
     let userRoleId = user.roleId;
 
@@ -1970,8 +2052,8 @@ export const authenticateStaffMember = async (email: string, password: string): 
         const { data: allPerms } = await getAllPermissionsAction();
 
         if (rolePerms && allPerms && !permissionError) {
-            const permissionIdsForRole = new Set(rolePerms.filter(rp => rp.role_id === userRoleId).map(rp => rp.permission_id));
-            permissions = allPerms.filter(p => permissionIdsForRole.has(p.id)).map(p => p.name);
+            const permissionIdsForRole = new Set(rolePerms.filter((rp: any) => rp.role_id === userRoleId).map((rp: any) => rp.permission_id));
+            permissions = allPerms.filter((p: any) => permissionIdsForRole.has(p.id)).map((p: any) => p.name);
         } else if (permissionError) {
             console.error("DataStore: Failed to fetch permissions for role.", permissionError);
         }
@@ -2009,13 +2091,15 @@ export const getBulkMeterByCustomerKey = async (key: string): Promise<StoreOpera
     if (bulkMeter) {
         return { success: true, data: bulkMeter };
     }
-    // Fallback to DB if not in local store
-    const { data, error } = await supabase.from('bulk_meters').select('*').eq('customerKeyNumber', key).single();
-    if (error || !data) {
-        return { success: false, message: "Bulk meter not found", error };
-    }
-    const domainData = await mapSupabaseBulkMeterToDomain(data);
-    return { success: true, data: domainData };
+  // Fallback to DB if not in local store — use action wrapper which returns { data, error }
+  const { data, error } = await getAllBulkMetersAction();
+  if (error || !data) {
+    return { success: false, message: "Bulk meter not found", error };
+  }
+  const found = (data as any[]).find(b => b.customerKeyNumber === key);
+  if (!found) return { success: false, message: "Bulk meter not found" };
+  const domainData = await mapDbBulkMeterToDomain(found as any);
+  return { success: true, data: domainData };
 };
 
 

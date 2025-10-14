@@ -14,8 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 
 interface CsvUploadSectionProps {
   entryType: "bulk" | "individual";
-  schema: z.ZodObject<any, any, any>;
-  addRecordFunction: (data: any) => Promise<void>;
+  // Accept ZodObject or ZodEffects wrapping a ZodObject to handle refined schemas
+  schema: z.ZodTypeAny;
+  addRecordFunction: (data: any) => Promise<{ success: boolean; message?: string; error?: any; data?: any; } | void>;
   expectedHeaders: string[];
 }
 
@@ -43,7 +44,13 @@ export function CsvUploadSection({ schema, addRecordFunction, expectedHeaders }:
   };
   
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    resetState();
+    // Don't clear the file input element before reading event.target.files —
+    // doing so loses the selection in some browsers. Only reset transient UI state
+    // (errors/progress/counts) so a new selection is clean.
+    setProcessingErrors([]);
+    setSuccessCount(0);
+    setIsProcessing(false);
+
     const selectedFile = event.target.files?.[0];
     if (selectedFile) {
       if (selectedFile.type === "text/csv" || selectedFile.name.endsWith(".csv")) {
@@ -89,11 +96,15 @@ export function CsvUploadSection({ schema, addRecordFunction, expectedHeaders }:
         
         try {
           const validatedData = schema.parse(rowData);
-          await addRecordFunction(validatedData);
-          localSuccessCount++;
+          const result = await addRecordFunction(validatedData);
+          if (result && result.success) {
+            localSuccessCount++;
+          } else {
+            localErrors.push(`Row ${i + 1}: ${result?.message || 'An unknown error occurred.'}`);
+          }
         } catch (error) {
           if (error instanceof z.ZodError) {
-            const errorMessages = error.issues.map(issue => `Row ${i + 1}, Column '${issue.path.join('.')}': ${issue.message}`).join("; ");
+            const errorMessages = error.issues.map(issue => `Row ${i + 1}, Column '${issue.path.join('.')}}': ${issue.message}`).join("; ");
             localErrors.push(errorMessages);
           } else {
             localErrors.push(`Row ${i + 1}: An unexpected error occurred during processing. ${(error as Error).message}`);

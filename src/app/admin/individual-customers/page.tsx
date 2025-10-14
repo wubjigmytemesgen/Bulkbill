@@ -117,6 +117,7 @@ export default function IndividualCustomersPage() {
     }
     
     if (selectedCustomer) {
+      if (!hasPermission('customers_update')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to update customers.' }); return; }
       const result = await updateCustomerInStore(selectedCustomer.customerKeyNumber, data);
       if (result.success) {
         toast({ title: "Customer Updated", description: `${data.name} has been updated.` });
@@ -128,6 +129,7 @@ export default function IndividualCustomersPage() {
         });
       }
     } else {
+      if (!hasPermission('customers_create')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to create customers.' }); return; }
       const result = await addCustomerToStore(data, currentUser);
       if (result.success && result.data) {
         toast({ title: "Customer Added", description: `${result.data.name} has been added.` });

@@ -3,7 +3,21 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
+  (allProps, ref) => {
+    const { className, type, value, defaultValue, ...props } = allProps as React.ComponentProps<'input'> & { value?: any };
+    // Prevent React warning about switching between uncontrolled and controlled inputs
+    // If a `value` prop is explicitly provided (even null/undefined), normalize it to ''
+    // so the input remains controlled. If `value` is not provided, leave it uncontrolled.
+    const inputProps: React.ComponentProps<'input'> = { ...props } as any;
+    const hasValueProp = Object.prototype.hasOwnProperty.call(allProps, 'value');
+    if (hasValueProp) {
+      // value was passed (could be undefined/null) — ensure a string
+      (inputProps as any).value = value ?? '';
+    } else if (defaultValue !== undefined) {
+      // preserve defaultValue for uncontrolled inputs
+      (inputProps as any).defaultValue = defaultValue as any;
+    }
+
     return (
       <input
         type={type}
@@ -12,9 +26,9 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className
         )}
         ref={ref}
-        {...props}
+        {...inputProps}
       />
-    )
+    );
   }
 )
 Input.displayName = "Input"

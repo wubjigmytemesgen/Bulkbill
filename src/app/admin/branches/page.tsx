@@ -54,16 +54,19 @@ export default function BranchesPage() {
   }, []);
 
   const handleAddBranch = () => {
+    if (!canCreate) return;
     setSelectedBranch(null);
     setIsFormOpen(true);
   };
 
   const handleEditBranch = (branch: Branch) => {
+    if (!canUpdate) return;
     setSelectedBranch(branch);
     setIsFormOpen(true);
   };
 
   const handleDeleteBranch = (branch: Branch) => {
+    if (!canDelete) return;
     setBranchToDelete(branch);
     setIsDeleteDialogOpen(true);
   };
@@ -78,12 +81,18 @@ export default function BranchesPage() {
   };
 
   const handleSubmitBranch = async (data: BranchFormValues) => {
-    if (selectedBranch) {
-      await updateBranchInStore(selectedBranch.id, data);
-      toast({ title: "Branch Updated", description: `${data.name} has been updated.` });
-    } else {
-      await addBranchToStore(data); 
-      toast({ title: "Branch Added", description: `${data.name} has been added.` });
+    try {
+      if (selectedBranch) {
+        if (!canUpdate) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to update branches.' }); return; }
+        await updateBranchInStore(selectedBranch.id, data);
+        toast({ title: "Branch Updated", description: `${data.name} has been updated.` });
+      } else {
+        if (!canCreate) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to create branches.' }); return; }
+        await addBranchToStore(data); 
+        toast({ title: "Branch Added", description: `${data.name} has been added.` });
+      }
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to save branch.' });
     }
     setIsFormOpen(false);
     setSelectedBranch(null);

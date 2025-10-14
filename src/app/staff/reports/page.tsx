@@ -337,7 +337,7 @@ export default function StaffReportsPage() {
               </SelectTrigger>
               <SelectContent>
                 {availableStaffReports.map((report) => (
-                  <SelectItem key={report.id} value={report.id} disabled={!report.getData}>
+                  <SelectItem key={String(report.id)} value={String(report.id)} disabled={!report.getData}>
                     <div className="flex items-center gap-2">
                       <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
                       {report.name}
