@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from "react";
@@ -27,8 +26,8 @@ import type { StaffMember } from "@/app/admin/staff-management/staff-types";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 
-const bulkMeterCsvHeaders = ["name", "customerKeyNumber", "contractNumber", "meterSize", "meterNumber", "previousReading", "currentReading", "month", "specificArea", "subCity", "woreda", "chargeGroup", "sewerageConnection", "xCoordinate", "yCoordinate"];
-const individualCustomerCsvHeaders = ["name", "customerKeyNumber", "contractNumber", "customerType", "bookNumber", "ordinal", "meterSize", "meterNumber", "previousReading", "currentReading", "month", "specificArea", "subCity", "woreda", "sewerageConnection", "assignedBulkMeterId"];
+const bulkMeterCsvHeaders = ["name", "customerKeyNumber", "contractNumber", "meterSize", "meterNumber", "previousReading", "currentReading", "month", "specificArea", "subCity", "woreda", "chargeGroup", "sewerageConnection", "xCoordinate", "yCoordinate", "branchId"];
+const individualCustomerCsvHeaders = ["name", "customerKeyNumber", "contractNumber", "customerType", "bookNumber", "ordinal", "meterSize", "meterNumber", "previousReading", "currentReading", "month", "specificArea", "subCity", "woreda", "sewerageConnection", "assignedBulkMeterId", "branchId"];
 
 interface User {
   email: string;
@@ -76,7 +75,7 @@ export default function StaffDataEntryPage() {
       ...data,
       branchId: staffBranchId || undefined, // Use the stored branch ID
     };
-    await addBulkMeter(bulkMeterDataForStore, currentUser);
+    return await addBulkMeter(bulkMeterDataForStore, currentUser);
   };
 
   const handleIndividualCustomerCsvUpload = async (data: IndividualCustomerDataEntryFormValues) => {
@@ -85,7 +84,7 @@ export default function StaffDataEntryPage() {
         ...data,
         branchId: staffBranchId || undefined, // Use the stored branch ID
     } as Omit<IndividualCustomer, 'created_at' | 'updated_at' | 'status' | 'paymentStatus' | 'calculatedBill' | 'arrears' | 'approved_at' | 'approved_by'>;
-    await addCustomer(customerDataForStore, currentUser);
+    return await addCustomer(customerDataForStore, currentUser);
   };
   
   const downloadCsvTemplate = (headers: string[], fileName: string) => {

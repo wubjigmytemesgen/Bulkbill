@@ -217,7 +217,7 @@ export type Database = {
           previousReading: number
           sewerage_connection: "Yes" | "No"
           specificArea: string
-          status: "Active" | "Maintenance" | "Decommissioned" | "Pending Approval" | "Rejected"
+          status: "Active" | "Maintenance" | "Pending Approval" | "Rejected"
           subCity: string
           total_bulk_bill: number | null
           updatedAt: string | null
@@ -246,7 +246,7 @@ export type Database = {
           previousReading: number
           sewerage_connection: "Yes" | "No"
           specificArea: string
-          status: "Active" | "Maintenance" | "Decommissioned" | "Pending Approval" | "Rejected"
+          status: "Active" | "Maintenance" | "Pending Approval" | "Rejected"
           subCity: string
           total_bulk_bill?: number | null
           updatedAt?: string | null
@@ -275,7 +275,7 @@ export type Database = {
           previousReading?: number
           sewerage_connection?: "Yes" | "No"
           specificArea?: string
-          status?: "Active" | "Maintenance" | "Decommissioned" | "Pending Approval" | "Rejected"
+          status?: "Active" | "Maintenance" | "Pending Approval" | "Rejected"
           subCity?: string
           total_bulk_bill?: number | null
           updatedAt?: string | null
@@ -959,3 +959,12 @@ export type Enums<
   : PublicEnumNameOrOptions extends keyof Database["public"]["Enums"]
     ? Database["public"]["Enums"][PublicEnumNameOrOptions]
     : never
+
+export type SecurityLog = {
+  id: string;
+  created_at: string;
+  event: string;
+  branch_name: string | null;
+  staff_email: string | null;
+  ip_address: string | null;
+};

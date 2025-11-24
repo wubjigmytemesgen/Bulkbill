@@ -30,12 +30,13 @@ import type { Branch } from "@/app/admin/branches/branch-types";
 import { TablePagination } from "@/components/ui/table-pagination";
 import type { BulkMeter } from "@/app/admin/bulk-meters/bulk-meter-types";
 import type { StaffMember } from "@/app/admin/staff-management/staff-types";
+import { useCurrentUser } from '@/hooks/use-current-user';
 import { usePermissions } from "@/hooks/use-permissions";
 
 export default function StaffIndividualCustomersPage() {
   const { hasPermission } = usePermissions();
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = React.useState<StaffMember | null>(null);
+  const { currentUser, branchId, branchName, isStaffManagement } = useCurrentUser();
   
   const [allCustomers, setAllCustomers] = React.useState<IndividualCustomer[]>([]);
   const [allBulkMeters, setAllBulkMeters] = React.useState<BulkMeter[]>([]);
@@ -51,15 +52,10 @@ export default function StaffIndividualCustomersPage() {
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
   
-  React.useEffect(() => {
-    const userJson = localStorage.getItem("user");
-    if (userJson) {
-      setCurrentUser(JSON.parse(userJson));
-    }
-  }, []);
+  // currentUser provided by useCurrentUser
 
   React.useEffect(() => {
-    if (!currentUser?.branchId) {
+    if (!branchId) {
       setIsLoading(false);
       return;
     }
@@ -98,20 +94,35 @@ export default function StaffIndividualCustomersPage() {
 
   // Declarative filtering with useMemo
   const branchFilteredData = React.useMemo(() => {
-    if (!currentUser?.branchId) {
-      return { customers: [], bulkMeters: [] };
+    // Staff Management role must only see its own branch
+    if (isStaffManagement && branchId) {
+      const branchBMs = allBulkMeters.filter(bm => bm.branchId === branchId);
+      const branchBMKeys = new Set(branchBMs.map(bm => bm.customerKeyNumber));
+      const branchCustomers = allCustomers.filter(customer =>
+        customer.branchId === branchId ||
+        (customer.assignedBulkMeterId && branchBMKeys.has(customer.assignedBulkMeterId))
+      );
+      return { customers: branchCustomers, bulkMeters: branchBMs.map(bm => ({ customerKeyNumber: bm.customerKeyNumber, name: bm.name })) };
     }
-    
-    const branchBMs = allBulkMeters.filter(bm => bm.branchId === currentUser?.branchId);
-    const branchBMKeys = new Set(branchBMs.map(bm => bm.customerKeyNumber));
-    
-    const branchCustomers = allCustomers.filter(customer =>
-      customer.branchId === currentUser?.branchId ||
-      (customer.assignedBulkMeterId && branchBMKeys.has(customer.assignedBulkMeterId))
-    );
-    
-    return { customers: branchCustomers, bulkMeters: branchBMs.map(bm => ({ customerKeyNumber: bm.customerKeyNumber, name: bm.name })) };
-  }, [currentUser, allCustomers, allBulkMeters]);
+
+    // Users with global view permission see everything (unless staff management handled above)
+    if (hasPermission('customers_view_all')) {
+      return { customers: allCustomers, bulkMeters: allBulkMeters.map(bm => ({ customerKeyNumber: bm.customerKeyNumber, name: bm.name })) };
+    }
+
+    // Branch-scoped view for users who have that permission
+    if (hasPermission('customers_view_branch') && branchId) {
+      const branchBMs = allBulkMeters.filter(bm => bm.branchId === branchId);
+      const branchBMKeys = new Set(branchBMs.map(bm => bm.customerKeyNumber));
+      const branchCustomers = allCustomers.filter(customer =>
+        customer.branchId === branchId ||
+        (customer.assignedBulkMeterId && branchBMKeys.has(customer.assignedBulkMeterId))
+      );
+      return { customers: branchCustomers, bulkMeters: branchBMs.map(bm => ({ customerKeyNumber: bm.customerKeyNumber, name: bm.name })) };
+    }
+
+    return { customers: [], bulkMeters: [] };
+  }, [isStaffManagement, branchId, hasPermission, allCustomers, allBulkMeters]);
   
   const searchedCustomers = React.useMemo(() => {
     if (!searchTerm) {
@@ -173,7 +184,7 @@ export default function StaffIndividualCustomersPage() {
          toast({ variant: "destructive", title: "Update Failed", description: result.message || "Could not update customer."});
       }
     } else {
-      const result = await addCustomerToStore(data, currentUser);
+  const result = await addCustomerToStore(data, currentUser as StaffMember);
       if (result.success && result.data) {
         toast({ title: "Customer Added", description: `${result.data.name} has been added.` });
       } else {
@@ -188,7 +199,7 @@ export default function StaffIndividualCustomersPage() {
     if (isLoading) {
       return <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">Loading...</div>;
     }
-    if (!currentUser?.branchId) {
+    if (!branchId) {
       return <div className="mt-4 p-4 border rounded-md bg-destructive/10 text-center text-destructive">Your user profile is not configured for a staff role or branch.</div>;
     }
     if (branchFilteredData.customers.length === 0 && !searchTerm) {
@@ -210,7 +221,7 @@ export default function StaffIndividualCustomersPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-4">
-        <h1 className="text-2xl md:text-3xl font-bold">Individual Customers {currentUser?.branchName ? `(${currentUser.branchName})` : ''}</h1>
+  <h1 className="text-2xl md:text-3xl font-bold">Individual Customers {branchName ? `(${branchName})` : ''}</h1>
         <div className="flex gap-2 w-full md:w-auto">
            <div className="relative flex-grow md:flex-grow-0">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -220,11 +231,11 @@ export default function StaffIndividualCustomersPage() {
               className="pl-8 w-full md:w-[250px]"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              disabled={!currentUser?.branchId}
+              disabled={!branchId}
             />
           </div>
           {hasPermission('customers_create') && (
-            <Button onClick={handleAddCustomer} disabled={!currentUser?.branchId}>
+            <Button onClick={handleAddCustomer} disabled={!branchId}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Customer
             </Button>
           )}
@@ -233,13 +244,13 @@ export default function StaffIndividualCustomersPage() {
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Customer List for {currentUser?.branchName || "Your Area"}</CardTitle>
+          <CardTitle>Customer List for {branchName || "Your Area"}</CardTitle>
           <CardDescription>View, edit, and manage individual customer information for your branch.</CardDescription>
         </CardHeader>
         <CardContent>
           {renderContent()}
         </CardContent>
-        {searchedCustomers.length > 0 && currentUser?.branchId && (
+        {searchedCustomers.length > 0 && branchId && (
           <TablePagination
             count={searchedCustomers.length}
             page={page}

@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { ReactNode } from "react";
@@ -6,6 +5,7 @@ import * as React from "react";
 import { SidebarNav, type NavItemGroup, type NavItem } from "@/components/layout/sidebar-nav";
 import { AppShell } from "@/components/layout/app-shell";
 import { PermissionsContext, type PermissionsContextType } from '@/hooks/use-permissions';
+import { refetchUserPermissions } from "@/lib/data-store";
 
 interface UserProfile {
   id: string; 
@@ -71,6 +71,13 @@ const buildSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => {
     if (dataReportsItems.length > 0) {
         navItems.push({ title: "Data & Reports", items: dataReportsItems });
     }
+
+    const securityItems: NavItem[] = [];
+    if (hasPermission('security_logs_view')) securityItems.push({ title: "Security Logs", href: "/admin/security-logs", iconName: "Shield" });
+
+    if (securityItems.length > 0) {
+        navItems.push({ title: "Security", items: securityItems });
+    }
     
     if (hasPermission('settings_view')) {
       navItems.push({
@@ -88,14 +95,33 @@ interface AdminLayoutClientProps {
 }
 
 
-export default function AdminLayoutClient({ children, user }: AdminLayoutClientProps) {
+export default function AdminLayoutClient({ children, user: initialUser }: AdminLayoutClientProps) {
+    const [user, setUser] = React.useState<UserProfile | null>(initialUser);
+
+    React.useEffect(() => {
+        const fetchUser = async () => {
+            await refetchUserPermissions();
+            const storedUser = localStorage.getItem("user");
+            if (storedUser) {
+                try {
+                    const parsedUser = JSON.parse(storedUser);
+                    setUser(parsedUser);
+                } catch (e) {
+                    console.error("Failed to parse user from localStorage", e);
+                }
+            }
+        };
+
+        fetchUser();
+    }, []);
+
     const navItems = buildSidebarNavItems(user);
 
     const permissionsValue: PermissionsContextType = React.useMemo(() => ({
         permissions: new Set(user?.permissions || []),
         hasPermission: (permission: string) => {
-            if (user?.role.toLowerCase() === 'admin') return true;
-            return user?.permissions?.includes(permission) || false;
+            const userRoleLower = user?.role.toLowerCase();
+            return userRoleLower === 'admin' || (user?.permissions?.includes(permission) || false);
         }
     }), [user]);
 

@@ -15,9 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Bell, Send, Lock } from "lucide-react";
+import { Bell, Send, Lock, Trash2, Edit } from "lucide-react";
 import {
   addNotification,
+  deleteNotification,
   getNotifications,
   subscribeToNotifications,
   initializeNotifications,
@@ -29,6 +30,7 @@ import type { DomainNotification } from "@/lib/data-store";
 import type { Branch } from "../branches/branch-types";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Alert, AlertTitle } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const ALL_STAFF_VALUE = "all-staff-target";
 
@@ -53,6 +55,7 @@ export default function AdminNotificationsPage() {
   const [sentNotifications, setSentNotifications] = React.useState<DomainNotification[]>([]);
   const [branches, setBranches] = React.useState<Branch[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [notificationToDelete, setNotificationToDelete] = React.useState<DomainNotification | null>(null);
 
   React.useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -127,6 +130,22 @@ export default function AdminNotificationsPage() {
     }
   }
 
+  const handleDelete = (notification: DomainNotification) => {
+    setNotificationToDelete(notification);
+  };
+
+  const confirmDelete = async () => {
+    if (notificationToDelete) {
+      const result = await deleteNotification(notificationToDelete.id);
+      if (result.success) {
+        toast({ title: "Notification Deleted", description: `The notification has been removed.` });
+      } else {
+        toast({ variant: "destructive", title: "Delete Failed", description: result.message });
+      }
+      setNotificationToDelete(null);
+    }
+  };
+
   const getDisplayTargetName = (targetId: string | null) => {
     if (targetId === null) return "All Staff";
     return branches.find(b => b.id === targetId)?.name || `ID: ${targetId}`;
@@ -134,6 +153,8 @@ export default function AdminNotificationsPage() {
   
   const canCreateNotifications = hasPermission('notifications_create');
   const canViewNotifications = hasPermission('notifications_view');
+  const canEditNotifications = hasPermission('edit_notifications');
+  const canDeleteNotifications = hasPermission('delete_notifications');
   const isBranchManager = user?.role?.toLowerCase() === 'staff management' && user.branchId;
 
   if (!canViewNotifications) {
@@ -240,11 +261,12 @@ export default function AdminNotificationsPage() {
                             <TableHead>Message</TableHead>
                             <TableHead>Target</TableHead>
                             <TableHead>Sent</TableHead>
+                            <TableHead>Actions</TableHead>
                         </TableRow>
                         </TableHeader>
                         <TableBody>
                         {isLoading ? (
-                            <TableRow><TableCell colSpan={3} className="h-24 text-center">Loading notifications...</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={4} className="h-24 text-center">Loading notifications...</TableCell></TableRow>
                         ) : filteredAndSortedNotifications.length > 0 ? (
                             filteredAndSortedNotifications.map(n => (
                             <TableRow key={n.id}>
@@ -256,10 +278,24 @@ export default function AdminNotificationsPage() {
                                 <TableCell className="text-xs text-muted-foreground">
                                 {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                                 </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    {canEditNotifications && (
+                                      <Button variant="outline" size="icon" disabled>
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                    {canDeleteNotifications && (
+                                      <Button variant="destructive" size="icon" onClick={() => handleDelete(n)}>
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
                             </TableRow>
                             ))
                         ) : (
-                            <TableRow><TableCell colSpan={3} className="h-24 text-center">No notifications sent yet.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={4} className="h-24 text-center">No notifications sent yet.</TableCell></TableRow>
                         )}
                         </TableBody>
                     </Table>
@@ -268,6 +304,21 @@ export default function AdminNotificationsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!notificationToDelete} onOpenChange={(open) => !open && setNotificationToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the notification "{notificationToDelete?.title}".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

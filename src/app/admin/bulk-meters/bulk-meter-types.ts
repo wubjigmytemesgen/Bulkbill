@@ -3,7 +3,7 @@ import type { z } from "zod";
 import type { baseBulkMeterDataSchema } from "@/app/admin/data-entry/customer-data-entry-types";
 import type { PaymentStatus, CustomerType, SewerageConnection } from "@/lib/billing"; // Import CustomerType
 
-export const bulkMeterStatuses = ['Active', 'Maintenance', 'Decommissioned', 'Pending Approval', 'Rejected'] as const;
+export const bulkMeterStatuses = ['Active', 'Maintenance', 'Pending Approval', 'Rejected'] as const;
 export type BulkMeterStatus = (typeof bulkMeterStatuses)[number];
 
 // This type represents the data structure for a bulk meter entity.

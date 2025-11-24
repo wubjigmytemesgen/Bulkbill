@@ -20,6 +20,8 @@ import {
   initializeStaffMembers
 } from "@/lib/data-store";
 import { usePermissions } from "@/hooks/use-permissions";
+import { logSecurityEvent } from "@/lib/logger";
+import Link from "next/link";
 
 export default function StaffManagementPage() {
   const { hasPermission } = usePermissions();
@@ -31,8 +33,14 @@ export default function StaffManagementPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedStaff, setSelectedStaff] = React.useState<StaffMember | null>(null);
   const [staffToDelete, setStaffToDelete] = React.useState<StaffMember | null>(null);
+  const [currentUser, setCurrentUser] = React.useState<StaffMember | null>(null);
 
   React.useEffect(() => {
+    const userJson = localStorage.getItem('user');
+    if (userJson) {
+      setCurrentUser(JSON.parse(userJson));
+    }
+
     setIsLoading(true);
     initializeStaffMembers().then(() => {
       setStaffMembers(getStaffMembers());
@@ -68,6 +76,7 @@ export default function StaffManagementPage() {
     if (staffToDelete) {
       const result = await deleteStaffMemberFromStore(staffToDelete.email);
       if (result.success) {
+        logSecurityEvent(`Staff member ${staffToDelete.name} (${staffToDelete.email}) deleted by ${currentUser?.email}.`, currentUser?.email, currentUser?.branchName);
         toast({ title: "Staff Deleted", description: `${staffToDelete.name} has been removed.` });
       } else {
         toast({ variant: "destructive", title: "Deletion Failed", description: result.message });
@@ -83,6 +92,7 @@ export default function StaffManagementPage() {
         if (!hasPermission('staff_update')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to update staff.' }); return; }
         const result = await updateStaffMemberInStore(selectedStaff.email, data);
         if (result.success) {
+          logSecurityEvent(`Staff member ${data.name} (${data.email}) updated by ${currentUser?.email}.`, currentUser?.email, currentUser?.branchName);
           toast({ title: "Staff Updated", description: `${data.name} has been updated.` });
         } else {
           toast({ variant: "destructive", title: "Update Failed", description: result.message });
@@ -91,6 +101,7 @@ export default function StaffManagementPage() {
         if (!hasPermission('staff_create')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to create staff.' }); return; }
         const result = await addStaffMemberToStore(data as StaffMember);
         if (result.success) {
+          logSecurityEvent(`Staff member ${data.name} (${data.email}) added by ${currentUser?.email}.`, currentUser?.email, currentUser?.branchName);
           toast({ title: "Staff Added", description: `${data.name} has been added.` });
         } else {
           toast({ variant: "destructive", title: "Add Failed", description: result.message });
@@ -159,6 +170,21 @@ export default function StaffManagementPage() {
                 />
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle>Logging and Monitoring</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="list-disc pl-5">
+            <li>Log Security Events: Log all failed logins, password resets, and permission changes.</li>
+            <li>Monitor Logs: Regularly check logs for suspicious activity with tools like Sentry or LogRocket.</li>
+          </ul>
+          <Link href="/admin/security-logs" className="text-blue-500 hover:underline">
+            View Security Logs
+          </Link>
         </CardContent>
       </Card>
       

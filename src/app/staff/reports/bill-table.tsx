@@ -33,12 +33,21 @@ export function BillTable({ bills, customers, bulkMeters }: BillTableProps) {
     return bill.individualCustomerId || bill.bulkMeterId || "N/A";
   };
   
-  const formatDate = (dateString: string) => {
-    try {
-      return format(parseISO(dateString), "PP"); // e.g., Sep 21, 2023
-    } catch (e) {
-      return dateString; // Fallback if parsing fails
+  const formatDate = (date: string | Date | null | undefined) => {
+    if (!date) return "";
+    let d: Date;
+    if (typeof date === "string") {
+      try {
+        d = parseISO(date);
+      } catch {
+        return date;
+      }
+    } else if (date instanceof Date) {
+      d = date;
+    } else {
+      return "";
     }
+    return format(d, "PP"); // e.g., Sep 21, 2023
   };
 
   return (

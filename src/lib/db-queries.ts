@@ -1,6 +1,3 @@
-
-
-
 import { query } from './mysql';
 
 // Simple MySQL-backed implementations for common DB operations used across the app.
@@ -8,12 +5,44 @@ import { query } from './mysql';
 // and allow an incremental migration. Later we can add precise types.
 
 export const getStaffMemberForAuth = async (email: string, password?: string) => {
-    // Check both email and password for authentication
-    const rows: any = await query(
-        'SELECT sm.*, r.role_name FROM staff_members sm LEFT JOIN roles r ON sm.role_id = r.id WHERE sm.email = ? AND sm.password = ?',
-        [email, password]
-    );
-    return rows[0] ?? null;
+    let sql = `
+        SELECT
+            sm.*,
+            r.role_name,
+            GROUP_CONCAT(p.name) AS permissions
+        FROM
+            staff_members sm
+        LEFT JOIN
+            roles r ON sm.role_id = r.id
+        LEFT JOIN
+            role_permissions rp ON r.id = rp.role_id
+        LEFT JOIN
+            permissions p ON rp.permission_id = p.id
+        WHERE
+            sm.email = ?
+    `;
+
+    const params = [email];
+
+    if (password) {
+        sql += ' AND sm.password = ?';
+        params.push(password);
+    }
+
+    sql += ' GROUP BY sm.id';
+
+    const rows: any = await query(sql, params);
+
+    if (rows && rows[0]) {
+        const user = rows[0];
+        if (user.permissions) {
+            user.permissions = user.permissions.split(',');
+        } else {
+            user.permissions = [];
+        }
+        return user;
+    }
+    return null;
 };
 
 export const dbGetAllBranches = async () => {
@@ -226,43 +255,47 @@ export const dbUpdateReportLog = async (id: string, log: any) => {
 export const dbDeleteReportLog = async (id: string) => { await query('DELETE FROM reports WHERE id = ?', [id]); return true; };
 
 export const dbGetAllNotifications = async () => await query('SELECT * FROM notifications');
+export const dbDeleteNotification = async (id: string) => { await query('DELETE FROM notifications WHERE id = ?', [id]); return true; };
 export const dbCreateNotification = async (notification: any) => {
-    const payload = notification || {};
-    // Support both RPC-style payloads (p_title, p_message...) and direct notification objects
-    if ('p_title' in payload) {
-        const title = payload.p_title;
-        const message = payload.p_message;
-        const sender_name = payload.p_sender_name;
-        const target_branch_id = payload.p_target_branch_id ?? null;
-        const created_at = new Date().toISOString();
-        const res: any = await query(
-            'INSERT INTO notifications (title, message, sender_name, target_branch_id, created_at) VALUES (?, ?, ?, ?, ?)',
-            [title, message, sender_name, target_branch_id, created_at]
-        );
-        if (res && res.insertId) {
-            const inserted = await query('SELECT * FROM notifications WHERE id = ?', [res.insertId]);
-            return inserted[0] ?? null;
-        }
-        return {
-            id: null,
-            title,
-            message,
-            sender_name,
-            target_branch_id,
-            created_at,
-        };
-    }
-
-    const keys = Object.keys(payload);
-    if (keys.length === 0) return null;
+    const keys = Object.keys(notification);
     const sql = `INSERT INTO notifications (${keys.map(k=>`\`${k}\``).join(',')}) VALUES (${keys.map(()=>'?').join(',')})`;
-    const res: any = await query(sql, keys.map(k=>payload[k]));
+    const res: any = await query(sql, keys.map(k=>notification[k]));
     if (res && res.insertId) return (await query('SELECT * FROM notifications WHERE id = ?', [res.insertId]))[0];
-    return null;
+    return notification;
+};
+
+export const dbUpdateNotification = async (id: string, notification: any) => {
+    const keys = Object.keys(notification);
+    if (keys.length === 0) return null;
+    const setClause = keys.map(k=>`\`${k}\` = ?`).join(',');
+    await query(`UPDATE notifications SET ${setClause} WHERE id = ?`, [...keys.map(k=>notification[k]), id]);
+    return (await query('SELECT * FROM notifications WHERE id = ?', [id]))[0] ?? null;
 };
 
 export const dbGetAllRoles = async () => await query('SELECT * FROM roles');
+export const dbCreateRole = async (role: any) => {
+    const keys = Object.keys(role);
+    const sql = `INSERT INTO roles (${keys.map(k=>`\`${k}\``).join(',')}) VALUES (${keys.map(()=>'?').join(',')})`;
+    const res: any = await query(sql, keys.map(k=>role[k]));
+    if (res && res.insertId) return (await query('SELECT * FROM roles WHERE id = ?', [res.insertId]))[0];
+    return role;
+};
 export const dbGetAllPermissions = async () => await query('SELECT * FROM permissions');
+export const dbCreatePermission = async (permission: any) => {
+    const keys = Object.keys(permission);
+    const sql = `INSERT INTO permissions (${keys.map(k=>`\`${k}\``).join(',')}) VALUES (${keys.map(()=>'?').join(',')})`;
+    const res: any = await query(sql, keys.map(k=>permission[k]));
+    if (res && res.insertId) return (await query('SELECT * FROM permissions WHERE id = ?', [res.insertId]))[0];
+    return permission;
+};
+export const dbUpdatePermission = async (id: number, permission: any) => {
+    const keys = Object.keys(permission);
+    const setClause = keys.map(k=>`\`${k}\` = ?`).join(',');
+    await query(`UPDATE permissions SET ${setClause} WHERE id = ?`, [...keys.map(k=>permission[k]), id]);
+    return (await query('SELECT * FROM permissions WHERE id = ?', [id]))[0] ?? null;
+};
+export const dbDeletePermission = async (id: number) => { await query('DELETE FROM permissions WHERE id = ?', [id]); return true; };
+
 export const dbGetAllRolePermissions = async () => await query('SELECT * FROM role_permissions');
 export const dbRpcUpdateRolePermissions = async (roleId: number, permissionIds: number[]) => {
     // Update role_permissions mapping for given role
@@ -312,3 +345,50 @@ export const dbUpdateKnowledgeBaseArticle = async (id: number, article: any) => 
 };
 export const dbDeleteKnowledgeBaseArticle = async (id: number) => { await query('DELETE FROM knowledge_base_articles WHERE id = ?', [id]); return true; };
 
+export const dbGetAllSecurityLogs = async (page: number = 1, pageSize: number = 10, sortBy: string = 'created_at', sortOrder: 'asc' | 'desc' = 'desc') => {
+    try {
+        const offset = (page - 1) * pageSize;
+        const validSortColumns = ['id', 'created_at', 'event', 'staff_email', 'ip_address'];
+        const validatedSortBy = validSortColumns.includes(sortBy) ? sortBy : 'created_at';
+        const validatedSortOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+        const sql = `
+            SELECT id, created_at, event, branch_name, staff_email, ip_address
+            FROM security_logs
+            ORDER BY ${validatedSortBy} ${validatedSortOrder}
+            LIMIT ?, ?`;
+        const countSql = `SELECT COUNT(*) as total FROM security_logs`;
+
+        const logs = await query(sql, [offset, pageSize]);
+        const totalResult: any = await query(countSql);
+        const total = totalResult[0].total;
+
+        return {
+            logs,
+            total,
+            page,
+            pageSize,
+            lastPage: Math.ceil(total / pageSize),
+        };
+    } catch (error) {
+        console.error('Error in dbGetAllSecurityLogs:', error);
+        throw error; // Re-throw the error so the API route can catch it
+    }
+};
+
+export const dbUpdateSecurityLog = async (id: string, log: { event?: string; branch_name?: string; staff_email?: string; ip_address?: string }) => {
+    const keys = Object.keys(log);
+    if (keys.length === 0) return null;
+
+    const setClause = keys.map(k => `\`${k}\` = ?`).join(', ');
+    const params = [...keys.map(k => (log as any)[k]), id];
+
+    await query(`UPDATE security_logs SET ${setClause} WHERE id = ?`, params);
+    const updated = await query('SELECT id, created_at, event, branch_name, staff_email, ip_address FROM security_logs WHERE id = ?', [id]);
+    return updated[0] ?? null;
+};
+
+export const dbDeleteSecurityLog = async (id: string) => {
+    await query('DELETE FROM security_logs WHERE id = ?', [id]);
+    return true;
+};

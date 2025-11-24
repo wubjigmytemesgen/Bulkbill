@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { IndividualCustomer as DomainIndividualCustomer, IndividualCustomerStatus } from '@/app/admin/individual-customers/individual-customer-types';
@@ -46,9 +47,15 @@ import {
   getAllReportLogsAction,
   updateReportLogAction,
   createNotificationAction,
+  deleteNotificationAction,
   getAllNotificationsAction,
+  updateNotificationAction,
   getAllRolesAction,
+  createRoleAction,
   getAllPermissionsAction,
+  createPermissionAction,
+  updatePermissionAction,
+  deletePermissionAction,
   getAllRolePermissionsAction,
   rpcUpdateRolePermissionsAction,
   getAllTariffsAction,
@@ -57,8 +64,47 @@ import {
   createKnowledgeBaseArticleAction,
   updateKnowledgeBaseArticleAction,
   deleteKnowledgeBaseArticleAction,
-  getAllKnowledgeBaseArticlesAction
+  getAllKnowledgeBaseArticlesAction,
 } from './actions';
+
+export const refetchUserPermissions = async (): Promise<void> => {
+  const storedUser = localStorage.getItem("user");
+  if (storedUser) {
+    try {
+      const user = JSON.parse(storedUser);
+      if (user && user.email) {
+        // Re-authenticate to get the latest user data, including permissions
+        // actions.wrap returns { data, error } so check `error` instead of `success`.
+        const { data: freshUser, error } = await getStaffMemberForAuthAction(user.email);
+        if (!error && freshUser) {
+          // freshUser is a DB row shape (may have `role_name` and `permissions` array).
+          // Map it to the domain shape the client expects and persist.
+          try {
+            const domainUser = mapDbStaffToDomain(freshUser as any);
+            // Preserve permissions array if provided by the DB action
+            if ((freshUser as any).permissions) {
+              domainUser.permissions = Array.isArray((freshUser as any).permissions) ? (freshUser as any).permissions : String((freshUser as any).permissions).split(',');
+            }
+
+            // Resolve branchId if branchName is present but branchId missing
+            if (domainUser.branchName && !domainUser.branchId) {
+              if (!branchesFetched) await initializeBranches();
+              const branchMatch = getBranches().find(b => b.name === domainUser.branchName) || getBranches().find(b => (b.name || '').toLowerCase() === domainUser.branchName!.toLowerCase()) || getBranches().find(b => String(b.id) === String(domainUser.branchName));
+              if (branchMatch) domainUser.branchId = branchMatch.id;
+            }
+
+            localStorage.setItem("user", JSON.stringify(domainUser));
+          } catch (e) {
+            // Fallback: persist the raw freshUser if mapping fails
+            localStorage.setItem("user", JSON.stringify(freshUser));
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to refetch user permissions:", e);
+    }
+  }
+};
 
 
 // NOTE: During incremental migration from Postgres -> MySQL we relax
@@ -376,12 +422,12 @@ const mapDbCustomerToDomain = async (dbCustomer: IndividualCustomer): Promise<Do
 };
 
 // Helper: compute bill using local tariff store. Returns zeros if tariff is missing.
-async function computeBillLocal(usage: number, customerType: CustomerType, sewerageConnection: SewerageConnection, meterSize: number, month: string): Promise<BillCalculationResult> {
+async function computeBillLocal(usage: number, customerType: CustomerType, sewerageConnection: SewerageConnection, meterSize: number, month: string, sewerageUsageM3?: number): Promise<BillCalculationResult> {
   // Use live tariff data from DB for the billing year when calculating bills.
   // `calculateBill` will attempt to fetch the tariff for the given billing month/year
   // from the database and fall back to a zeroed result on failure.
   try {
-    return await calculateBill(usage, customerType, sewerageConnection, meterSize, month);
+    return await calculateBill(usage, customerType, sewerageConnection, meterSize, month, sewerageUsageM3);
   } catch (e) {
     console.warn('computeBillLocal: calculateBill failed, returning zero bill.', e);
     return { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, vatAmount: 0, meterRent: 0, sewerageCharge: 0 };
@@ -505,8 +551,17 @@ const mapDomainBulkMeterToInsert = async (bm: Partial<BulkMeter>): Promise<BulkM
   const associatedCustomers = allIndividualCustomers.filter(c => c.assignedBulkMeterId === bm.customerKeyNumber);
   const sumIndividualUsage = associatedCustomers.reduce((acc, cust) => acc + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0);
 
-  const differenceUsage = calculatedBulkUsage - sumIndividualUsage;
-  const { totalBill: differenceBill } = await computeBillLocal(differenceUsage, bm.chargeGroup as CustomerType || "Non-domestic", bm.sewerageConnection || "No", Number(bm.meterSize), bm.month!);
+  let differenceUsage = calculatedBulkUsage - sumIndividualUsage;
+  let differenceBill = 0;
+
+  if (differenceUsage < 0) {
+    const { totalBill } = await computeBillLocal(3, bm.chargeGroup as CustomerType || "Non-domestic", bm.sewerageConnection || "No", Number(bm.meterSize), bm.month!, calculatedBulkUsage);
+    differenceBill = totalBill;
+    differenceUsage = 3;
+  } else {
+    const { totalBill } = await computeBillLocal(differenceUsage, bm.chargeGroup as CustomerType || "Non-domestic", bm.sewerageConnection || "No", Number(bm.meterSize), bm.month!);
+    differenceBill = totalBill;
+  }
 
   return {
     name: bm.name!,
@@ -579,16 +634,19 @@ const mapDomainBulkMeterToUpdate = async (bulkMeterWithUpdates: BulkMeter): Prom
     
     const sumIndividualUsage = associatedCustomers.reduce((acc, cust) => acc + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0);
     
-    const newDifferenceUsage = newBulkUsage - sumIndividualUsage;
+    let newDifferenceUsage = newBulkUsage - sumIndividualUsage;
+    let newDifferenceBill = 0;
+
+    if (newDifferenceUsage < 0) {
+        const { totalBill } = await computeBillLocal(3, bulkMeterWithUpdates.chargeGroup as CustomerType, bulkMeterWithUpdates.sewerageConnection, Number(bulkMeterWithUpdates.meterSize), bulkMeterWithUpdates.month, newBulkUsage);
+        newDifferenceBill = totalBill;
+        newDifferenceUsage = 3;
+    } else {
+        const { totalBill } = await computeBillLocal(newDifferenceUsage, bulkMeterWithUpdates.chargeGroup as CustomerType, bulkMeterWithUpdates.sewerageConnection, Number(bulkMeterWithUpdates.meterSize), bulkMeterWithUpdates.month);
+        newDifferenceBill = totalBill;
+    }
+
     updatePayload.difference_usage = newDifferenceUsage;
-    
-  const { totalBill: newDifferenceBill } = await computeBillLocal(
-        newDifferenceUsage,
-        bulkMeterWithUpdates.chargeGroup as CustomerType,
-        bulkMeterWithUpdates.sewerageConnection,
-        Number(bulkMeterWithUpdates.meterSize),
-        bulkMeterWithUpdates.month
-    );
     updatePayload.difference_bill = newDifferenceBill;
     
     return updatePayload;
@@ -1209,11 +1267,24 @@ export const getTariff = (customerType: CustomerType, year: number): TariffInfo 
     };
 };
 
+export const getTariffs = (): TariffRow[] => [...tariffs];
+
 
 
 export const getBranches = (): DomainBranch[] => [...branches];
 export const getCustomers = (): DomainIndividualCustomer[] => [...customers];
 export const getBulkMeters = (): BulkMeter[] => [...bulkMeters];
+
+export const getBulkMeterByCustomerKey = async (customerKeyNumber: string): Promise<StoreOperationResult<BulkMeter>> => {
+  if (!bulkMetersFetched) {
+    await initializeBulkMeters();
+  }
+  const bulkMeter = bulkMeters.find(bm => bm.customerKeyNumber === customerKeyNumber);
+  if (bulkMeter) {
+    return { success: true, data: bulkMeter };
+  }
+  return { success: false, message: "Bulk meter not found.", isNotFoundError: true };
+};
 export const getStaffMembers = (): StaffMember[] => [...staffMembers];
 export const getBills = (): DomainBill[] => [...bills];
 export const getIndividualCustomerReadings = (): DomainIndividualCustomerReading[] => [...individualCustomerReadings];
@@ -1296,12 +1367,12 @@ export const addCustomer = async (
         return { success: false, message: `Customer with key '${customerData.customerKeyNumber}' already exists.` };
     }
 
-  const userRole = currentUser?.role?.toLowerCase();
-  const finalStatus: IndividualCustomerStatus = (userRole === 'staff' || userRole === 'staff management')
-    ? 'Pending Approval'
-    : 'Active';
+  // If a staff member (not admin) creates the customer, mark it Pending Approval
+  const finalStatus: IndividualCustomerStatus = (currentUser && currentUser.role === 'staff') ? 'Pending Approval' : 'Active';
 
-  const customerDataWithStatus = { ...customerData, status: finalStatus };
+  // Ensure branch is set to the staff's branch when created by staff
+  const branchIdToUse = customerData.branchId || currentUser.branchId;
+  const customerDataWithStatus = { ...customerData, status: finalStatus, branchId: branchIdToUse };
   const customerPayload = await mapDomainCustomerToInsert(customerDataWithStatus);
 
   const { data: newDbCustomer, error } = await createCustomerAction(customerPayload);
@@ -1381,12 +1452,11 @@ export const addBulkMeter = async (
         return { success: false, message: `Bulk meter with key '${bulkMeterDomainData.customerKeyNumber}' already exists.` };
     }
 
-  const userRole = currentUser?.role?.toLowerCase();
-  const finalStatus = (userRole === 'staff' || userRole === 'staff management')
-      ? 'Pending Approval'
-      : 'Active';
+  // If a staff member creates the bulk meter, mark it pending approval so branch/admin can approve
+  const finalStatus = (currentUser && currentUser.role === 'staff') ? 'Pending Approval' : 'Active';
+  const branchIdToUse = bulkMeterDomainData.branchId || currentUser.branchId;
 
-  const bulkMeterPayload = await mapDomainBulkMeterToInsert({ ...bulkMeterDomainData, status: finalStatus });
+  const bulkMeterPayload = await mapDomainBulkMeterToInsert({ ...bulkMeterDomainData, status: finalStatus, branchId: branchIdToUse });
   
   const { data: newDbBulkMeter, error } = await createBulkMeterAction(bulkMeterPayload);
   if (newDbBulkMeter && !error) {
@@ -1591,7 +1661,12 @@ export const addIndividualCustomerReading = async (readingData: Omit<DomainIndiv
         return { success: false, message: userMessage, error: readingInsertError };
     }
 
-    const updateResult = await updateCustomer(customer.customerKeyNumber, { currentReading: newDbReading.reading_value, month: newDbReading.month_year });
+  // Shift existing currentReading to previousReading, and set the new currentReading
+  const updateResult = await updateCustomer(customer.customerKeyNumber, {
+    previousReading: customer.currentReading ?? 0,
+    currentReading: newDbReading.reading_value,
+    month: newDbReading.month_year
+  });
 
     if (!updateResult.success) {
         await deleteIndividualCustomerReadingAction(newDbReading.id);
@@ -1650,7 +1725,12 @@ export const addBulkMeterReading = async (readingData: Omit<DomainBulkMeterReadi
     return { success: false, message: userMessage, error: readingInsertError };
   }
 
-  const updateResult = await updateBulkMeter(bulkMeter.customerKeyNumber, { currentReading: newDbReading.reading_value, month: newDbReading.month_year });
+  // Shift the existing currentReading into previousReading, and set the new currentReading
+  const updateResult = await updateBulkMeter(bulkMeter.customerKeyNumber, {
+    previousReading: bulkMeter.currentReading ?? 0,
+    currentReading: newDbReading.reading_value,
+    month: newDbReading.month_year
+  });
 
   if (!updateResult.success) {
     // Attempt cleanup using the id we generated or the returned id
@@ -1788,8 +1868,58 @@ export const addNotification = async (notificationData: { title: string; message
   return { success: false, message: userMessage, error };
 };
 
+export const createRole = async (roleName: string): Promise<StoreOperationResult<DomainRole>> => {
+  const { data: newDbRole, error } = await createRoleAction({ role_name: roleName });
+  if (newDbRole && !error) {
+    roles = [newDbRole, ...roles];
+    notifyRoleListeners();
+    return { success: true, data: newDbRole };
+  }
+  console.error("DataStore: Failed to create role. Error:", JSON.stringify(error, null, 2));
+  return { success: false, message: error?.message || "Failed to create role.", error };
+};
+
+export const deletePermission = async (id: number): Promise<StoreOperationResult<void>> => {
+  const { error } = await deletePermissionAction(id);
+  if (!error) {
+    permissions = permissions.filter(p => p.id !== id);
+    notifyPermissionListeners();
+    return { success: true };
+  }
+  console.error("DataStore: Failed to delete permission. Error:", JSON.stringify(error, null, 2));
+  return { success: false, message: (error as any)?.message || "Failed to delete permission.", error };
+};
+
+export const deleteNotification = async (id: string): Promise<StoreOperationResult<void>> => {
+  const { error } = await deleteNotificationAction(id);
+  if (!error) {
+    notifications = notifications.filter(n => n.id !== id);
+    notifyNotificationListeners();
+    return { success: true };
+  }
+  const userMessage = (error as any)?.message || "Failed to delete notification.";
+  console.error("DataStore: Failed to delete notification. Error:", JSON.stringify(error, null, 2));
+  return { success: false, message: userMessage, error };
+};
+
+export const updateNotification = async (id: string, notificationUpdateData: Partial<Omit<DomainNotification, 'id'>>): Promise<StoreOperationResult<void>> => {
+  const { data: updatedDbNotification, error } = await updateNotificationAction(id, notificationUpdateData as any);
+  if (updatedDbNotification && !error) {
+    const updatedNotification = mapDbNotificationToDomain(updatedDbNotification);
+    notifications = notifications.map(n => n.id === id ? updatedNotification : n);
+    notifyNotificationListeners();
+    return { success: true };
+  }
+  const userMessage = (error as any)?.message || "Failed to update notification.";
+  console.error("DataStore: Failed to update notification. Error:", JSON.stringify(error, null, 2));
+  return { success: false, message: userMessage, error };
+};
+
+
+
 
 export const updateRolePermissions = async (roleId: number, permissionIds: number[]): Promise<StoreOperationResult<void>> => {
+
     const { error } = await rpcUpdateRolePermissionsAction(roleId, permissionIds);
     if (!error) {
         await fetchAllRolePermissions();
@@ -2004,121 +2134,67 @@ export const authenticateStaffMember = async (email: string, password: string): 
           console.error("DataStore: Authentication error:", staffError.message);
           if (staffError.stack) console.error(staffError.stack);
         } else {
-          // JSON.stringify may omit non-enumerable properties (like Error.message),
-          // so attempt stringify but fall back to a raw log if that fails.
-          try {
-            console.error("DataStore: Authentication error:", JSON.stringify(staffError, null, 2));
-          } catch (e) {
-            console.error("DataStore: Authentication error:", staffError);
-          }
+          console.error("DataStore: Authentication error:", JSON.stringify(staffError, null, 2));
         }
       } catch (e) {
-        // Defensive fallback in case checking instanceof or logging throws in some runtimes
-        console.error("DataStore: Authentication error (fallback):", staffError);
+        console.error("DataStore: Error while logging authentication error:", e);
       }
     }
-
-    // If the error looks like a DB/connection error (timeout/refused), return a clearer message
-    try {
-      const errCode = (staffError && (staffError as any).code) || (staffError && (staffError as any).errno) || null;
-      if (errCode === 'ETIMEDOUT' || errCode === 'ECONNREFUSED' || errCode === 'ENOTFOUND') {
-        return { success: false, message: 'Unable to connect to the database. Please try again later.', isNotFoundError: false, error: staffError };
-      }
-    } catch (e) {
-      // ignore
-    }
-
-    return { success: false, message: "Invalid email or password.", isNotFoundError: true, error: staffError };
+    return { success: false, message: "Invalid credentials or user not found." };
   }
 
-    const user = mapDbStaffToDomain(staffData);
-
-    let userRoleId = user.roleId;
-
-    if (!userRoleId && user.role) {
-        if (!rolesFetched) await initializeRoles();
-        const foundRole = roles.find(r => r.role_name === user.role);
-        if (foundRole) {
-            userRoleId = foundRole.id;
-            user.roleId = userRoleId;
-        } else {
-            console.error(`DataStore: Could not find a matching role ID for role name "${user.role}" during login for user ${email}.`);
-        }
-    }
-    
-    let permissions: string[] = [];
-    if (userRoleId) {
-        const { data: rolePerms, error: permissionError } = await getAllRolePermissionsAction();
-        const { data: allPerms } = await getAllPermissionsAction();
-
-        if (rolePerms && allPerms && !permissionError) {
-            const permissionIdsForRole = new Set(rolePerms.filter((rp: any) => rp.role_id === userRoleId).map((rp: any) => rp.permission_id));
-            permissions = allPerms.filter((p: any) => permissionIdsForRole.has(p.id)).map((p: any) => p.name);
-        } else if (permissionError) {
-            console.error("DataStore: Failed to fetch permissions for role.", permissionError);
-        }
-    }
-    user.permissions = permissions;
-    
-    if (user.branchName) {
-        if (branches.length === 0) {
-          await initializeBranches();
-        }
-        
-        const normalizeBranchName = (name: string) => name.toLowerCase().replace(/\s*branch\s*$/, '').trim();
-        const normalizedStaffBranchName = normalizeBranchName(user.branchName);
-
-        const matchedBranch = branches.find(b => {
-            const normalizedOfficialName = normalizeBranchName(b.name);
-            return normalizedOfficialName === normalizedStaffBranchName || normalizedOfficialName.includes(normalizedStaffBranchName) || normalizedStaffBranchName.includes(normalizedOfficialName);
-        });
-        
-        if (matchedBranch) {
-            user.branchId = matchedBranch.id;
-            user.branchName = matchedBranch.name;
-        } else {
-            console.warn(`DataStore: Could not find a branch matching the name "${user.branchName}" for user ${user.email}.`);
-            user.branchName = 'Unknown Branch';
-            delete user.branchId;
-        }
-    }
-    
-    return { success: true, data: user };
-};
-
-export const getBulkMeterByCustomerKey = async (key: string): Promise<StoreOperationResult<BulkMeter>> => {
-    const bulkMeter = bulkMeters.find(bm => bm.customerKeyNumber === key);
-    if (bulkMeter) {
-        return { success: true, data: bulkMeter };
-    }
-  // Fallback to DB if not in local store — use action wrapper which returns { data, error }
-  const { data, error } = await getAllBulkMetersAction();
-  if (error || !data) {
-    return { success: false, message: "Bulk meter not found", error };
+  const domainStaffMember = mapDbStaffToDomain(staffData);
+  // Include permissions returned by the DB action (if any)
+  if ((staffData as any).permissions) {
+    domainStaffMember.permissions = Array.isArray((staffData as any).permissions) ? (staffData as any).permissions : String((staffData as any).permissions).split(',');
   }
-  const found = (data as any[]).find(b => b.customerKeyNumber === key);
-  if (!found) return { success: false, message: "Bulk meter not found" };
-  const domainData = await mapDbBulkMeterToDomain(found as any);
-  return { success: true, data: domainData };
+
+  // Add branchId to the user object
+  if (domainStaffMember.branchName) {
+    if (!branchesFetched) {
+      await initializeBranches();
+    }
+    const branches = getBranches();
+    // Try exact match first, then case-insensitive match, then try matching by id (in case branch was stored as an id)
+    let branch = branches.find(b => b.name === domainStaffMember.branchName);
+    if (!branch) {
+      const targetName = (domainStaffMember.branchName || '').toLowerCase();
+      branch = branches.find(b => (b.name || '').toLowerCase() === targetName);
+    }
+    if (!branch) {
+      // Maybe branchName actually contains an id — try matching by id
+      branch = branches.find(b => String(b.id) === String(domainStaffMember.branchName));
+    }
+    if (branch) {
+      domainStaffMember.branchId = branch.id;
+    }
+  }
+
+  return { success: true, data: domainStaffMember };
 };
 
+export const createPermission = async (permissionData: { name: string; category: string; }): Promise<StoreOperationResult<DomainPermission>> => {
+  const { data: newDbPermission, error } = await createPermissionAction(permissionData as any);
+  if (newDbPermission && !error) {
+    permissions = [newDbPermission, ...permissions];
+    notifyPermissionListeners();
+    return { success: true, data: newDbPermission };
+  }
+  console.error("DataStore: Failed to create permission. Error:", JSON.stringify(error, null, 2));
+  return { success: false, message: (error as any)?.message || "Failed to create permission.", error };
+};
 
-export async function loadInitialData() {
-  await initializeTariffs();
-  await Promise.all([
-    initializeBranches(),
-    initializeCustomers(),
-    initializeBulkMeters(), 
-    initializeStaffMembers(),
-    initializeBills(),
-    initializeIndividualCustomerReadings(),
-    initializeBulkMeterReadings(),
-    initializePayments(),
-    initializeReportLogs(),
-    initializeNotifications(),
-    initializeRoles(),
-    initializePermissions(),
-    initializeRolePermissions(),
-    initializeKnowledgeBaseArticles(),
-  ]);
-}
+export const updatePermission = async (id: number, permissionData: Partial<{ name: string; category: string; }>): Promise<StoreOperationResult<void>> => {
+  const { data: updatedDbPermission, error } = await updatePermissionAction(id, permissionData);
+  if (updatedDbPermission && !error) {
+    permissions = permissions.map(p => p.id === id ? updatedDbPermission : p);
+    notifyPermissionListeners();
+    return { success: true };
+  }
+  console.error("DataStore: Failed to update permission. Error:", JSON.stringify(error, null, 2));
+  let userMessage = "Failed to update permission.";
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    userMessage = `Failed to update permission: ${error.message}`;
+  }
+  return { success: false, message: userMessage, error };
+};

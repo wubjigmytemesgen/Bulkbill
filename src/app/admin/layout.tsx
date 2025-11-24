@@ -69,5 +69,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         return null; // Render nothing while redirecting
     }
 
-    return <AdminLayoutClient user={user}>{children}</AdminLayoutClient>;
+  // Ensure we only pass plain serializable objects to the client component.
+  // Defensive deep-clone removes prototypes, Sets, Dates, etc.
+  const safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
+  return <AdminLayoutClient user={safeUser}>{children}</AdminLayoutClient>;
 }

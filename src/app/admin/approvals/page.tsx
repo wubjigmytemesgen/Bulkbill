@@ -26,6 +26,8 @@ import type { Branch } from "../branches/branch-types";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Check, Frown, Lock, ShieldCheck, UserCheck, FileEdit } from "lucide-react";
+import { IndividualCustomerFormDialog, type IndividualCustomerFormValues } from "../individual-customers/individual-customer-form-dialog";
+import { BulkMeterFormDialog, type BulkMeterFormValues } from "../bulk-meters/bulk-meter-form-dialog";
 import { IndividualCustomerTable } from "../individual-customers/individual-customer-table";
 import { BulkMeterTable } from "../bulk-meters/bulk-meter-table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -43,6 +45,13 @@ export default function ApprovalsPage() {
   
   const [actionType, setActionType] = React.useState<'approve' | 'reject' | null>(null);
   const [selectedEntity, setSelectedEntity] = React.useState<IndividualCustomer | BulkMeter | null>(null);
+
+  // Edit dialogs state
+  const [isCustomerFormOpen, setIsCustomerFormOpen] = React.useState(false);
+  const [customerToEdit, setCustomerToEdit] = React.useState<IndividualCustomer | null>(null);
+
+  const [isBulkFormOpen, setIsBulkFormOpen] = React.useState(false);
+  const [bulkMeterToEdit, setBulkMeterToEdit] = React.useState<BulkMeter | null>(null);
 
   // Pagination state for customers
   const [customerPage, setCustomerPage] = React.useState(0);
@@ -122,6 +131,27 @@ export default function ApprovalsPage() {
     setActionType('reject');
   };
 
+  const handleOpenEditCustomer = (customer: IndividualCustomer) => {
+    setCustomerToEdit(customer);
+    setIsCustomerFormOpen(true);
+  };
+
+  const handleOpenEditBulkMeter = (bm: BulkMeter) => {
+    setBulkMeterToEdit(bm);
+    setIsBulkFormOpen(true);
+  };
+
+  // Import update functions lazily via callbacks (to avoid circular imports)
+  const updateCustomer = async (key: string, data: Partial<IndividualCustomer>) => {
+    const { updateCustomer: _u } = await import('@/lib/data-store');
+    return _u(key, data);
+  };
+
+  const updateBulkMeter = async (key: string, data: Partial<BulkMeter>) => {
+    const { updateBulkMeter: _u } = await import('@/lib/data-store');
+    return _u(key, data);
+  };
+
   const confirmAction = async () => {
     if (!selectedEntity || !actionType || !currentUser) return;
     
@@ -155,6 +185,42 @@ export default function ApprovalsPage() {
     // Close dialog
     setSelectedEntity(null);
     setActionType(null);
+  };
+
+  const handleSubmitCustomerEdit = async (values: IndividualCustomerFormValues) => {
+    if (!customerToEdit) return;
+    try {
+      const result = await updateCustomer(customerToEdit.customerKeyNumber, values as any);
+      if (result.success) {
+        toast({ title: "Customer Updated", description: `${values.name} has been updated.` });
+      } else {
+        toast({ variant: 'destructive', title: 'Update Failed', description: result.message || 'Could not update customer.' });
+      }
+    } catch (err) {
+      console.error(err);
+      toast({ variant: 'destructive', title: 'Update Failed', description: 'An unexpected error occurred.' });
+    } finally {
+      setIsCustomerFormOpen(false);
+      setCustomerToEdit(null);
+    }
+  };
+
+  const handleSubmitBulkMeterEdit = async (values: BulkMeterFormValues) => {
+    if (!bulkMeterToEdit) return;
+    try {
+      const result = await updateBulkMeter(bulkMeterToEdit.customerKeyNumber, values as any);
+      if (result.success) {
+        toast({ title: "Bulk Meter Updated", description: `${values.name} has been updated.` });
+      } else {
+        toast({ variant: 'destructive', title: 'Update Failed', description: result.message || 'Could not update bulk meter.' });
+      }
+    } catch (err) {
+      console.error(err);
+      toast({ variant: 'destructive', title: 'Update Failed', description: 'An unexpected error occurred.' });
+    } finally {
+      setIsBulkFormOpen(false);
+      setBulkMeterToEdit(null);
+    }
   };
   
   const hasApprovalPermission = hasPermission('customers_approve') || hasPermission('bulk_meters_approve');
@@ -209,9 +275,10 @@ export default function ApprovalsPage() {
             <IndividualCustomerTable 
               data={paginatedCustomers} 
               branches={branches}
-              onEdit={handleApproveClick}
+              onEdit={handleOpenEditCustomer}
+              onApprove={handleApproveClick}
               onDelete={handleRejectClick}
-              canEdit={hasPermission('customers_approve')}
+              canEdit={hasPermission('customers_update') || hasPermission('customers_approve')}
               canDelete={hasPermission('customers_approve')}
             />
           )}
@@ -252,9 +319,10 @@ export default function ApprovalsPage() {
             <BulkMeterTable
               data={paginatedBulkMeters} 
               branches={branches}
-              onEdit={handleApproveClick}
+              onEdit={handleOpenEditBulkMeter}
+              onApprove={handleApproveClick}
               onDelete={handleRejectClick}
-              canEdit={hasPermission('bulk_meters_approve')}
+              canEdit={hasPermission('bulk_meters_update') || hasPermission('bulk_meters_approve')}
               canDelete={hasPermission('bulk_meters_approve')}
             />
           )}
@@ -293,6 +361,22 @@ export default function ApprovalsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit dialogs for approvers to adjust records before approval */}
+      <IndividualCustomerFormDialog
+        open={isCustomerFormOpen}
+        onOpenChange={setIsCustomerFormOpen}
+        onSubmit={handleSubmitCustomerEdit}
+        defaultValues={customerToEdit}
+        bulkMeters={bulkMeters ? bulkMeters.map(bm => ({ customerKeyNumber: bm.customerKeyNumber, name: bm.name })) : []}
+      />
+
+      <BulkMeterFormDialog
+        open={isBulkFormOpen}
+        onOpenChange={setIsBulkFormOpen}
+        onSubmit={handleSubmitBulkMeterEdit}
+        defaultValues={bulkMeterToEdit}
+      />
 
     </div>
   );

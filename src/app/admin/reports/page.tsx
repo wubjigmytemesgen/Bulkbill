@@ -43,6 +43,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { cn } from "@/lib/utils";
 import { ReportDataView } from './report-data-view';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { calculateBill } from "@/lib/billing";
 import { ReportAIAssistant } from "./report-ai-assistant";
 
 
@@ -124,13 +125,14 @@ const availableReports: ReportType[] = [
     headers: [
       "customerKeyNumber", "name", "contractNumber", "meterSize", "meterNumber",
       "previousReading", "currentReading", "month", "specificArea", "subCity", "woreda", "status", 
-      "paymentStatus", "chargeGroup", "sewerageConnection", "Assigned Branch Name", 
-      "bulkUsage", "totalBulkBill", "differenceUsage", "differenceBill"
+      "paymentStatus", "chargeGroup", "sewerageConnection", "Assigned Branch Name", "Number of Assigned Individual Customers",
+      "bulkUsage", "totalIndividualUsage", "totalBulkBill", "differenceUsage", "differenceBill"
     ],
-    getData: (filters) => {
+    getData: async (filters) => {
       const { branchId } = filters;
       const bulkMeters = getBulkMeters();
       const branches = getBranches();
+      const customers = getCustomers();
 
       let filteredData = bulkMeters;
 
@@ -138,13 +140,37 @@ const availableReports: ReportType[] = [
         filteredData = filteredData.filter(bm => bm.branchId === branchId);
       }
 
-      const dataWithBranchName = filteredData.map(bm => {
+      const dataWithBranchName = await Promise.all(filteredData.map(async (bm) => {
         const branch = bm.branchId ? branches.find(b => b.id === bm.branchId) : null;
+
+        const associatedCustomers = customers.filter(c => c.assignedBulkMeterId === bm.customerKeyNumber);
+        const totalIndividualUsage = associatedCustomers.reduce((sum, cust) => {
+          const usage = (cust.currentReading ?? 0) - (cust.previousReading ?? 0);
+          return sum + usage;
+        }, 0);
+
+        const bulkUsage = bm.bulkUsage ?? 0;
+        const differenceUsage = bulkUsage < totalIndividualUsage ? 3 : bulkUsage - totalIndividualUsage;
+
+        const billingMonth = new Date().toISOString().slice(0, 7);
+        let differenceBill = 0;
+        if (bm.chargeGroup) {
+            const differenceBillResult = await calculateBill(differenceUsage, bm.chargeGroup, bm.sewerageConnection, parseFloat(bm.meterSize), billingMonth);
+            differenceBill = differenceBillResult.totalBill;
+        } else {
+            console.warn(`Bulk meter ${bm.customerKeyNumber} is missing a chargeGroup. Bill calculation skipped.`);
+        }
+
         return {
           ...bm,
           "Assigned Branch Name": branch ? branch.name : "N/A",
+          "Number of Assigned Individual Customers": associatedCustomers.length,
+          "totalIndividualUsage": totalIndividualUsage,
+          "bulkUsage": bulkUsage,
+          "differenceUsage": differenceUsage,
+          "differenceBill": differenceBill,
         };
-      });
+      }));
 
       return dataWithBranchName;
     },
@@ -388,6 +414,43 @@ const availableReports: ReportType[] = [
       return dataWithNames;
     },
   },
+  {
+    id: "tariffs-data-export",
+    name: "Tariffs Data Export (XLSX)",
+    description: "Download a comprehensive list of all tariffs.",
+    headers: [
+      "customer_type", "year", "tiers", "maintenance_percentage", "sanitation_percentage", 
+      "sewerage_tiers", "meter_rent_prices", "vat_rate", "domestic_vat_threshold_m3"
+    ],
+    getData: (filters) => {
+      const { getTariffs } = require("@/lib/data-store");
+      return getTariffs();
+    },
+  },
+  {
+    id: "meter-readings-data-export",
+    name: "Meter Readings Data Export (XLSX)",
+    description: "Download a comprehensive list of all meter readings.",
+    headers: [
+        "id", "meterType", "individualCustomerId", "bulkMeterId", "readerStaffId", 
+        "readingDate", "monthYear", "readingValue", "isEstimate", "notes", 
+        "createdAt", "updatedAt"
+    ],
+    getData: (filters) => {
+      return getMeterReadings();
+    },
+  },
+  {
+    id: "staff-data-export",
+    name: "Staff Data Export (XLSX)",
+    description: "Download a comprehensive list of all staff members.",
+    headers: [
+        "id", "name", "email", "branchName", "status", "phone", "hireDate", "role"
+    ],
+    getData: (filters) => {
+      return getStaffMembers();
+    },
+  },
 ];
 
 export default function AdminReportsPage() {
@@ -445,12 +508,12 @@ export default function AdminReportsPage() {
     setSelectedColumns(new Set(selectedReport?.headers || []));
   }, [selectedReport]);
   
-  const getFilteredData = React.useCallback(() => {
+  const getFilteredData = React.useCallback(async () => {
     if (!selectedReport?.getData) {
       return [];
     }
 
-    let data = selectedReport.getData({
+    let data = await selectedReport.getData({
         branchId: selectedBranch === 'all' ? undefined : selectedBranch,
         startDate: dateRange?.from,
         endDate: dateRange?.to,
@@ -459,7 +522,7 @@ export default function AdminReportsPage() {
     return data;
   }, [selectedReport, selectedBranch, dateRange]);
 
-  const handleGenerateReport = () => {
+  const handleGenerateReport = async () => {
     if (!selectedReport) return;
 
     if (!selectedReport.getData || !selectedReport.headers) {
@@ -469,7 +532,7 @@ export default function AdminReportsPage() {
 
     setIsGenerating(true);
     try {
-      const data = getFilteredData();
+      const data = await getFilteredData();
       if (!data || data.length === 0) {
         toast({ title: "No Data", description: "No data found for the selected filters." });
         return;
@@ -488,7 +551,7 @@ export default function AdminReportsPage() {
     }
   };
 
-  const handleViewReport = () => {
+  const handleViewReport = async () => {
     if (!selectedReport) return;
     
     setReportData(null); 
@@ -498,7 +561,7 @@ export default function AdminReportsPage() {
         return;
     }
 
-    const data = getFilteredData();
+    const data = await getFilteredData();
     if (!data || data.length === 0) {
       toast({ title: "No Data", description: `No data found for ${selectedReport.name} with the selected filters.` });
       return;

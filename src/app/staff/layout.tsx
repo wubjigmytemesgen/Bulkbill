@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { ReactNode } from "react";
@@ -8,6 +7,7 @@ import { SidebarNav, type NavItemGroup, type NavItem } from "@/components/layout
 import { Skeleton } from "@/components/ui/skeleton";
 import { PermissionsContext, type PermissionsContextType } from '@/hooks/use-permissions';
 import { useRouter } from 'next/navigation';
+import { refetchUserPermissions } from "@/lib/data-store";
 
 interface UserProfile {
   id: string;
@@ -20,6 +20,7 @@ interface UserProfile {
 }
 
 const buildStaffSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => {
+    console.log("Building sidebar for user:", user);
     if (!user) return [];
 
     const permissions = new Set(user.permissions || []);
@@ -32,9 +33,22 @@ const buildStaffSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => 
         items: [{ title: "Dashboard", href: "/staff/dashboard", iconName: "LayoutDashboard" }]
     });
 
+    const managementItems: NavItem[] = [];
+    if (hasPermission('branches_view')) managementItems.push({ title: "Branch Management", href: "/staff/branches", iconName: "Building" });
+    if (hasPermission('staff_view')) managementItems.push({ title: "Staff Management", href: "/staff/staff-management", iconName: "UserCog" });
+    if (hasPermission('customers_approve')) managementItems.push({ title: "Approvals", href: "/staff/approvals", iconName: "UserCheck" });
+    if (hasPermission('permissions_view')) managementItems.push({ title: "Roles & Permissions", href: "/staff/roles-and-permissions", iconName: "ShieldCheck" });
+    if (hasPermission('notifications_view')) managementItems.push({ title: "Notifications", href: "/staff/notifications", iconName: "Bell" });
+    if (hasPermission('tariffs_view')) managementItems.push({ title: "Tariff Management", href: "/staff/tariffs", iconName: "LibraryBig" });
+    if (hasPermission('knowledge_base_manage')) managementItems.push({ title: "Knowledge Base", href: "/staff/knowledge-base", iconName: "BookText" });
+    
+    if (managementItems.length > 0) {
+        navItems.push({ title: "Management", items: managementItems });
+    }
+
     const customerMeteringItems: NavItem[] = [];
-    if (hasPermission('bulk_meters_view_branch')) customerMeteringItems.push({ title: "Bulk Meters", href: "/staff/bulk-meters", iconName: "Gauge" });
-    if (hasPermission('customers_view_branch')) customerMeteringItems.push({ title: "Individual Customers", href: "/staff/individual-customers", iconName: "Users" });
+    if (hasPermission('bulk_meters_view_branch') || hasPermission('bulk_meters_view_all')) customerMeteringItems.push({ title: "Bulk Meters", href: "/staff/bulk-meters", iconName: "Gauge" });
+    if (hasPermission('customers_view_branch') || hasPermission('customers_view_all')) customerMeteringItems.push({ title: "Individual Customers", href: "/staff/individual-customers", iconName: "Users" });
 
     if (customerMeteringItems.length > 0) {
         navItems.push({ title: "Customer & Metering", items: customerMeteringItems });
@@ -42,21 +56,22 @@ const buildStaffSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => 
 
     const dataReportsItems: NavItem[] = [];
     if (hasPermission('data_entry_access')) dataReportsItems.push({ title: "Data Entry", href: "/staff/data-entry", iconName: "FileText" });
-    if (hasPermission('meter_readings_view_branch')) dataReportsItems.push({ title: "Meter Readings", href: "/staff/meter-readings", iconName: "ClipboardList" });
-    if (hasPermission('reports_generate_branch')) {
+    if (hasPermission('meter_readings_view_branch') || hasPermission('meter_readings_view_all')) dataReportsItems.push({ title: "Meter Readings", href: "/staff/meter-readings", iconName: "ClipboardList" });
+    if (hasPermission('reports_generate_branch') || hasPermission('reports_generate_all')) {
         dataReportsItems.push({ title: "Reports", href: "/staff/reports", iconName: "BarChart2" });
         dataReportsItems.push({ title: "List Of Paid Bills", href: "/staff/reports/paid-bills", iconName: "CheckCircle2" });
         dataReportsItems.push({ title: "List Of Sent Bills", href: "/staff/reports/sent-bills", iconName: "Send" });
         dataReportsItems.push({ title: "List of Unsettled Bills", href: "/staff/reports/unsettled-bills", iconName: "FileClock" });
     }
-    
-    // Dynamically add Tariff Management if permission exists
-    if (hasPermission('tariffs_view')) {
-      dataReportsItems.push({ title: "Tariff Management", href: "/staff/tariffs", iconName: "LibraryBig" });
-    }
 
     if (dataReportsItems.length > 0) {
         navItems.push({ title: "Data & Reports", items: dataReportsItems });
+    }
+
+    if (hasPermission('settings_view')) {
+      navItems.push({
+        items: [{ title: "Settings", href: "/staff/settings", iconName: "Settings" }]
+      });
     }
 
     return navItems;
@@ -68,19 +83,24 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
     const router = useRouter();
 
     React.useEffect(() => {
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-            try {
-                const parsedUser = JSON.parse(storedUser);
-                setUser(parsedUser);
-            } catch (e) {
-                console.error("Failed to parse user from localStorage", e);
+        const fetchUser = async () => {
+            await refetchUserPermissions();
+            const storedUser = localStorage.getItem("user");
+            if (storedUser) {
+                try {
+                    const parsedUser = JSON.parse(storedUser);
+                    setUser(parsedUser);
+                } catch (e) {
+                    console.error("Failed to parse user from localStorage", e);
+                    router.replace("/");
+                }
+            } else {
                 router.replace("/");
             }
-        } else {
-            router.replace("/");
-        }
-        setIsLoading(false);
+            setIsLoading(false);
+        };
+
+        fetchUser();
     }, [router]);
 
     const navItems = buildStaffSidebarNavItems(user);
@@ -104,9 +124,11 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
         return null;
     }
     
+    // Ensure user passed to AppShell is a plain object (strip prototypes)
+    const safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
     return (
         <PermissionsContext.Provider value={permissionsValue}>
-            <AppShell user={user} userRole="staff" sidebar={<SidebarNav items={navItems} />} >
+            <AppShell user={safeUser} userRole="staff" sidebar={<SidebarNav items={navItems} />} >
                 {children}
             </AppShell>
         </PermissionsContext.Provider>

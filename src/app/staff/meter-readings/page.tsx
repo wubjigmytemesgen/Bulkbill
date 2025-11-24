@@ -30,6 +30,7 @@ import type { IndividualCustomer } from "@/app/admin/individual-customers/indivi
 import type { BulkMeter } from "@/app/admin/bulk-meters/bulk-meter-types";
 import type { DisplayReading } from "@/lib/data-store";
 import { format } from "date-fns";
+import { useCurrentUser } from '@/hooks/use-current-user';
 import { CsvReadingUploadDialog } from "@/components/csv-reading-upload-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TablePagination } from "@/components/ui/table-pagination";
@@ -51,7 +52,7 @@ export default function StaffMeterReadingsPage() {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [isIndividualCsvModalOpen, setIsIndividualCsvModalOpen] = React.useState(false);
   const [isBulkCsvModalOpen, setIsBulkCsvModalOpen] = React.useState(false);
-  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+  const { currentUser, branchId, branchName } = useCurrentUser();
   
   const [individualReadings, setIndividualReadings] = React.useState<DisplayReading[]>([]);
   const [bulkReadings, setBulkReadings] = React.useState<DisplayReading[]>([]);
@@ -67,18 +68,7 @@ export default function StaffMeterReadingsPage() {
   const [bulkPage, setBulkPage] = React.useState(0);
   const [bulkRowsPerPage, setBulkRowsPerPage] = React.useState(10);
   
-  // Effect 1: Set user from localStorage, runs once.
-  React.useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      try {
-        const parsedUser: User = JSON.parse(storedUser);
-        setCurrentUser(parsedUser);
-      } catch (e) {
-        console.error("Failed to parse user from localStorage", e);
-      }
-    }
-  }, []);
+  // currentUser is provided by useCurrentUser hook
 
   // Effect 2: Initialize data stores and set up subscriptions that depend on the user.
   React.useEffect(() => {
@@ -97,7 +87,7 @@ export default function StaffMeterReadingsPage() {
       const allIndividualReadings = getIndividualCustomerReadings();
       const allBulkReadings = getBulkMeterReadings();
 
-      const staffBranchId = currentUser?.branchId;
+  const staffBranchId = branchId;
       
       let branchBulkMeters: BulkMeter[] = [];
       let branchCustomers: IndividualCustomer[] = [];
@@ -111,7 +101,7 @@ export default function StaffMeterReadingsPage() {
           );
       }
       
-      setBulkMetersForForm(branchBulkMeters);
+  setBulkMetersForForm(branchBulkMeters);
       setCustomersForForm(branchCustomers);
 
       const displayedIndividualReadings: DisplayReading[] = allIndividualReadings
@@ -192,20 +182,20 @@ export default function StaffMeterReadingsPage() {
       if (meterType === 'individual_customer_meter') {
         result = await addIndividualCustomerReading({
           individualCustomerId: entityId,
-          readerStaffId: currentUser.id,
+          readerStaffId: currentUser?.id as string,
           readingDate: format(date, "yyyy-MM-dd"),
           monthYear: format(date, "yyyy-MM"),
           readingValue: reading,
-          notes: `Reading by ${currentUser.email}`,
+          notes: `Reading by ${currentUser?.email}`,
         });
       } else {
         result = await addBulkMeterReading({
           bulkMeterId: entityId,
-          readerStaffId: currentUser.id,
+          readerStaffId: currentUser?.id as string,
           readingDate: format(date, "yyyy-MM-dd"),
           monthYear: format(date, "yyyy-MM"),
           readingValue: reading,
-          notes: `Reading by ${currentUser.email}`,
+          notes: `Reading by ${currentUser?.email}`,
         });
       }
 
@@ -386,14 +376,14 @@ export default function StaffMeterReadingsPage() {
         onOpenChange={setIsIndividualCsvModalOpen}
         meterType="individual"
         meters={customersForForm}
-        currentUser={currentUser}
+        currentUser={currentUser as any}
       />
       <CsvReadingUploadDialog
         open={isBulkCsvModalOpen}
         onOpenChange={setIsBulkCsvModalOpen}
         meterType="bulk"
         meters={bulkMetersForForm}
-        currentUser={currentUser}
+        currentUser={currentUser as any}
       />
     </div>
   );

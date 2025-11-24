@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
@@ -12,12 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { 
+import {
   getBulkMeters, getCustomers, updateBulkMeter as updateBulkMeterInStore, deleteBulkMeter as deleteBulkMeterFromStore,
   updateCustomer as updateCustomerInStore, deleteCustomer as deleteCustomerFromStore, subscribeToBulkMeters, subscribeToCustomers,
   initializeBulkMeters, initializeCustomers, getBranches, initializeBranches, subscribeToBranches,
   getBulkMeterReadings, initializeBulkMeterReadings, subscribeToBulkMeterReadings,
-  addBill, addBulkMeterReading, removeBill, getBulkMeterByCustomerKey
+  addBill, addBulkMeterReading, removeBill, getBulkMeterByCustomerKey, updateExistingBill
 } from "@/lib/data-store";
 import { getBills, initializeBills, subscribeToBills } from "@/lib/data-store";
 import type { BulkMeter } from "../bulk-meter-types";
@@ -98,6 +97,9 @@ export default function BulkMeterDetailsPage() {
 
   const [isBillDeleteDialogOpen, setIsBillDeleteDialogOpen] = React.useState(false);
   const [billToDelete, setBillToDelete] = React.useState<DomainBill | null>(null);
+
+  const [isUpdateStatusDialogOpen, setIsUpdateStatusDialogOpen] = React.useState(false);
+  const [billToUpdate, setBillToUpdate] = React.useState<DomainBill | null>(null);
   
   const [showSlip, setShowSlip] = React.useState(false);
   const [isPrinting, setIsPrinting] = React.useState(false);
@@ -156,7 +158,9 @@ export default function BulkMeterDetailsPage() {
     let differenceUsage = bulkUsage - totalIndividualUsage;
   
     // Apply specific adjustment rules
-    if (differenceUsage === 0) {
+    if (differenceUsage < 0) { // If Bulk Usage < Total Individual Usage
+      differenceUsage = 3;
+    } else if (differenceUsage === 0) {
       differenceUsage += 3;
     } else if (differenceUsage === 1) {
       differenceUsage += 2;
@@ -164,15 +168,31 @@ export default function BulkMeterDetailsPage() {
       differenceUsage += 1;
     }
 
-  const differenceFull = await calculateBill(differenceUsage, effectiveBulkMeterCustomerType, effectiveBulkMeterSewerageConnection, currentBulkMeter.meterSize, billingMonth);
-  const differenceBill = differenceFull.totalBill;
-  const differenceBillBreakdown = differenceFull;
-  
+    let sewerageUsage: number | undefined = undefined;
+    if (
+      effectiveBulkMeterSewerageConnection === 'Yes' &&
+      [0, 1, 2].includes(bulkUsage) &&
+      differenceUsage === 3
+    ) {
+      sewerageUsage = bulkUsage;
+    }
+
+    const differenceFull = await calculateBill(
+      differenceUsage,
+      effectiveBulkMeterCustomerType,
+      effectiveBulkMeterSewerageConnection,
+      currentBulkMeter.meterSize,
+      billingMonth,
+      sewerageUsage
+    );
+    const differenceBill = differenceFull.totalBill;
+    const differenceBillBreakdown = differenceFull;
+    
     const totalPayable = differenceBill + outStandingBillValue;
-  const paymentStatus: PaymentStatus = totalPayable > 0.01 ? 'Unpaid' : 'Paid';
-  
-  const displayBranchName = currentBulkMeter.branchId ? (currentBranches.find(b => b.id === currentBulkMeter.branchId)?.name ?? currentBulkMeter.location ?? "N/A") : (currentBulkMeter.location ?? "N/A");
-  
+    const paymentStatus: PaymentStatus = totalPayable > 0.01 ? 'Unpaid' : 'Paid';
+    
+    const displayBranchName = currentBulkMeter.branchId ? (currentBranches.find(b => b.id === currentBulkMeter.branchId)?.name ?? currentBulkMeter.location ?? "N/A") : (currentBulkMeter.location ?? "N/A");
+    
     const billToRender = currentBillForPrintView || (currentBillingHistory.length > 0 ? currentBillingHistory[0] : null);
   
     let finalBillCardDetails;
@@ -193,7 +213,7 @@ export default function BulkMeterDetailsPage() {
         differenceUsage: billToRender.differenceUsage ?? 0,
         outstandingBill: billToRender.balanceCarriedForward ?? 0,
         totalPayable: (billToRender.balanceCarriedForward ?? 0) + billToRender.totalAmountDue,
-  paymentStatus: (billToRender.paymentStatus as PaymentStatus) || 'Unpaid',
+        paymentStatus: (billToRender.paymentStatus as PaymentStatus) || 'Unpaid',
         month: billToRender.monthYear,
       };
     } else {
@@ -206,7 +226,7 @@ export default function BulkMeterDetailsPage() {
         differenceUsage: differenceUsage,
         outstandingBill: outStandingBillValue,
         totalPayable: totalPayable,
-  paymentStatus: paymentStatus,
+        paymentStatus: paymentStatus,
         month: currentBulkMeter.month || 'N/A'
       };
     }
@@ -535,7 +555,17 @@ export default function BulkMeterDetailsPage() {
       
       const chargeGroup = latestMeterData.chargeGroup as CustomerType || 'Non-domestic';
       const sewerageConn = latestMeterData.sewerageConnection || 'No';
-      const { totalBill: billForDifferenceUsage, ...differenceBillBreakdownForCycle } = await calculateBill(differenceUsageForCycle, chargeGroup, sewerageConn, latestMeterData.meterSize, parsedMonth);
+
+      let sewerageUsageForCycle: number | undefined = undefined;
+      if (
+        sewerageConn === 'Yes' &&
+        [0, 1, 2].includes(bmUsage) &&
+        differenceUsageForCycle === 3
+      ) {
+        sewerageUsageForCycle = bmUsage;
+      }
+
+      const { totalBill: billForDifferenceUsage, ...differenceBillBreakdownForCycle } = await calculateBill(differenceUsageForCycle, chargeGroup, sewerageConn, latestMeterData.meterSize, parsedMonth, sewerageUsageForCycle);
       
       const balanceFromPreviousPeriods = latestMeterData.outStandingbill || 0;
       const totalPayableForCycle = billForDifferenceUsage + balanceFromPreviousPeriods;
@@ -610,6 +640,29 @@ export default function BulkMeterDetailsPage() {
       setBillToDelete(null);
     }
     setIsBillDeleteDialogOpen(false);
+  };
+
+  const handleUpdateBillStatus = (bill: DomainBill) => {
+    setBillToUpdate(bill);
+    setIsUpdateStatusDialogOpen(true);
+  };
+
+  const confirmUpdateBillStatus = async () => {
+    if (billToUpdate && bulkMeter) {
+      const newStatus = billToUpdate.paymentStatus === 'Paid' ? 'Unpaid' : 'Paid';
+      const result = await updateExistingBill(billToUpdate.id, { paymentStatus: newStatus });
+      if (result.success) {
+        toast({ title: "Payment Status Updated", description: `The bill for ${billToUpdate.monthYear} has been marked as ${newStatus}.` });
+
+        // Update the bulk meter's payment status
+        await updateBulkMeterInStore(bulkMeter.customerKeyNumber, { paymentStatus: newStatus });
+
+      } else {
+        toast({ variant: "destructive", title: "Update Failed", description: result.message });
+      }
+      setBillToUpdate(null);
+    }
+    setIsUpdateStatusDialogOpen(false);
   };
   
   React.useEffect(() => {
@@ -887,7 +940,7 @@ export default function BulkMeterDetailsPage() {
                 const diffUsageValue = bill.differenceUsage ?? (usageForBill - (associatedCustomers.reduce((sum, cust) => sum + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0)));
                 const displayDiffUsage = !isNaN(diffUsageValue) ? diffUsageValue.toFixed(2) : 'N/A';
                 return (
-                <TableRow key={bill.id}>
+                <TableRow key={bill.id + bill.monthYear}>
                   <TableCell>{bill.monthYear}</TableCell>
                   <TableCell>{formatDateForDisplay(bill.billPeriodEndDate)}</TableCell>
                   <TableCell className="text-right">{bill.previousReadingValue.toFixed(2)}</TableCell>
@@ -898,7 +951,7 @@ export default function BulkMeterDetailsPage() {
                   <TableCell className="text-right font-medium">{bill.totalAmountDue.toFixed(2)}</TableCell>
                   <TableCell className="text-right font-bold">{((bill.balanceCarriedForward ?? 0) + bill.totalAmountDue).toFixed(2)}</TableCell>
                   <TableCell><Badge variant={bill.paymentStatus === 'Paid' ? 'default' : 'destructive'}>{bill.paymentStatus}</Badge></TableCell>
-                  <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handlePrintSlip(bill)}><Printer className="mr-2 h-4 w-4" />Print/Export Bill</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteBillingRecord(bill)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Record</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell>
+                  <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handlePrintSlip(bill)}><Printer className="mr-2 h-4 w-4" />Print/Export Bill</DropdownMenuItem><DropdownMenuItem onClick={() => handleUpdateBillStatus(bill)}><FileEdit className="mr-2 h-4 w-4" />Edit Status</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteBillingRecord(bill)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Record</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell>
                 </TableRow>
               )})}</TableBody></Table>) : (<p className="text-muted-foreground text-sm text-center py-4">No billing history found.</p>)}</div>
             </CardContent>
@@ -919,7 +972,7 @@ export default function BulkMeterDetailsPage() {
     
           <Card className="shadow-lg non-printable">
             <CardHeader><CardTitle className="flex items-center gap-2"><UsersIcon className="h-5 w-5 text-primary" />Associated Individual Customers</CardTitle><CardDescription>List of individual customers connected to this bulk meter ({associatedCustomers.length} found).</CardDescription></CardHeader>
-            <CardContent>{paginatedCustomers.length === 0 && associatedCustomers.length > 0 ? (<div className="text-center text-muted-foreground py-4">No individual customers on this page.</div>) : associatedCustomers.length === 0 ? (<div className="text-center text-muted-foreground py-4">No individual customers are currently associated with this bulk meter.</div>) : (<div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Customer Name</TableHead><TableHead>Meter No.</TableHead><TableHead>Usage (m³)</TableHead><TableHead>Bill (ETB)</TableHead><TableHead>Pay Status</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{paginatedCustomers.map((customer) => { const usage = customer.currentReading - customer.previousReading; return (<TableRow key={customer.customerKeyNumber}><TableCell className="font-medium">{customer.name}</TableCell><TableCell>{customer.meterNumber}</TableCell><TableCell>{usage.toFixed(2)}</TableCell><TableCell>{customer.calculatedBill.toFixed(2)}</TableCell><TableCell><Badge variant={customer.paymentStatus === 'Paid' ? 'default' : customer.paymentStatus === 'Unpaid' ? 'destructive' : 'secondary'} className={cn(customer.paymentStatus === 'Paid' && "bg-green-500 hover:bg-green-600", customer.paymentStatus === 'Pending' && "bg-yellow-500 hover:bg-yellow-600")}>{customer.paymentStatus === 'Paid' ? <CheckCircle className="mr-1 h-3.5 w-3.5"/> : customer.paymentStatus === 'Unpaid' ? <XCircle className="mr-1 h-3.5 w-3.5"/> : <Clock className="mr-1 h-3.5 w-3.5"/>}{customer.paymentStatus}</Badge></TableCell><TableCell><Badge variant={customer.status === 'Active' ? 'default' : 'destructive'}>{customer.status}</Badge></TableCell><TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handleEditCustomer(customer)}><Edit className="mr-2 h-4 w-4" />Edit Customer</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteCustomer(customer)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Customer</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>);})}</TableBody></Table></div>)}</CardContent>
+            <CardContent>{paginatedCustomers.length === 0 && associatedCustomers.length > 0 ? (<div className="text-center text-muted-foreground py-4">No individual customers on this page.</div>) : associatedCustomers.length === 0 ? (<div className="text-center text-muted-foreground py-4">No individual customers are currently associated with this bulk meter.</div>) : (<div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Customer Name</TableHead><TableHead>Meter No.</TableHead><TableHead>Usage (m³)</TableHead><TableHead>Bill (ETB)</TableHead><TableHead>Pay Status</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{paginatedCustomers.map((customer) => { const usage = customer.currentReading - customer.previousReading; return (<TableRow key={customer.customerKeyNumber}><TableCell className="font-medium">{customer.name}</TableCell><TableCell>{customer.meterNumber}</TableCell><TableCell>{usage.toFixed(2)}</TableCell><TableCell>{customer.calculatedBill.toFixed(2)}</TableCell><TableCell><Badge variant={customer.paymentStatus === 'Paid' ? 'default' : customer.paymentStatus === 'Unpaid' ? 'destructive' : 'secondary'} className={cn(customer.paymentStatus === 'Paid' && "bg-green-500 hover:bg-green-600", customer.paymentStatus === 'Pending' && "bg-yellow-500 hover:bg-yellow-600")}>{customer.paymentStatus === 'Paid' ? <CheckCircle className="mr-1 h-3.5 w-3.5"/> : customer.paymentStatus === 'Unpaid' ? <XCircle className="mr-1 h-3.5 w-3.5"/> : <Clock className="mr-1 h-3.5 w-3.5"/>}{customer.paymentStatus}</Badge></TableCell><TableCell><Badge variant={customer.status === 'Active' ? 'default' : 'destructive'}>{customer.status}</Badge></TableCell><TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handleEditCustomer(customer)}><FileEdit className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem><DropdownMenuItem onClick={() => handleDeleteCustomer(customer)}><Trash2 className="mr-2 h-4 w-4"/>Delete</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>)} )}</TableBody></Table></div>)}</CardContent>
              {associatedCustomers.length > 0 && (
                 <TablePagination
                     count={associatedCustomers.length}
@@ -964,6 +1017,21 @@ export default function BulkMeterDetailsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setBillToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteBillingRecord} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isUpdateStatusDialogOpen} onOpenChange={setIsUpdateStatusDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Status Change</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to mark the bill for {billToUpdate?.monthYear} as {billToUpdate?.paymentStatus === 'Paid' ? 'Unpaid' : 'Paid'}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setBillToUpdate(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmUpdateBillStatus}>Confirm</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

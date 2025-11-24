@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from "react";
@@ -7,7 +6,9 @@ import {
     getRoles, initializeRoles, subscribeToRoles,
     getPermissions, initializePermissions, subscribeToPermissions,
     getRolePermissions, initializeRolePermissions, subscribeToRolePermissions,
-    updateRolePermissions
+    updateRolePermissions,
+    deletePermission,
+    refetchUserPermissions
 } from "@/lib/data-store";
 import type { DomainRole, DomainPermission, DomainRolePermission } from "@/lib/data-store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -16,9 +17,21 @@ import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, Save, Loader2 } from "lucide-react";
+import { ShieldCheck, Save, Loader2, PlusCircle, Pencil, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-
+import { CreateRoleDialog } from "@/components/create-role-dialog";
+import { CreateEditPermissionDialog } from "@/components/create-edit-permission-dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface PermissionGroup {
   [category: string]: DomainPermission[];
@@ -34,6 +47,11 @@ export default function RolesAndPermissionsPage() {
   
   const [selectedRoleId, setSelectedRoleId] = React.useState<string>("");
   const [selectedPermissions, setSelectedPermissions] = React.useState<Set<number>>(new Set());
+  const [createRoleDialogOpen, setCreateRoleDialogOpen] = React.useState(false);
+  const [isPermissionDialogOpen, setPermissionDialogOpen] = React.useState(false);
+  const [editingPermission, setEditingPermission] = React.useState<DomainPermission | undefined>(undefined);
+  const [deletingPermission, setDeletingPermission] = React.useState<DomainPermission | undefined>(undefined);
+  const [isDeleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
 
   const [isSaving, setIsSaving] = React.useState(false);
   
@@ -102,10 +120,41 @@ export default function RolesAndPermissionsPage() {
     if (result.success) {
       const selectedRole = roles.find(r => r.id === roleIdNum);
       toast({ title: "Permissions Updated", description: `Permissions for the role "${selectedRole?.role_name}" have been saved.` });
+      await refetchUserPermissions();
     } else {
       toast({ variant: "destructive", title: "Update Failed", description: result.message || "An unexpected error occurred." });
     }
     setIsSaving(false);
+  };
+
+  const handleOpenCreateDialog = () => {
+    setEditingPermission(undefined);
+    setPermissionDialogOpen(true);
+  };
+
+  const handleOpenEditDialog = (permission: DomainPermission) => {
+    setEditingPermission(permission);
+    setPermissionDialogOpen(true);
+  };
+
+  const handleOpenDeleteDialog = (permission: DomainPermission) => {
+    setDeletingPermission(permission);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingPermission) return;
+
+    const result = await deletePermission(deletingPermission.id);
+
+    if (result.success) {
+      toast({ title: "Permission Deleted", description: `The permission "${deletingPermission.name}" has been deleted.` });
+    } else {
+      toast({ variant: "destructive", title: "Delete Failed", description: result.message || "An unexpected error occurred." });
+    }
+
+    setDeleteDialogOpen(false);
+    setDeletingPermission(undefined);
   };
 
   const groupedPermissions = React.useMemo(() => {
@@ -137,7 +186,13 @@ export default function RolesAndPermissionsPage() {
 
   return (
     <div className="space-y-6">
-        <h1 className="text-2xl md:text-3xl font-bold">Roles & Permissions</h1>
+        <div className="flex justify-between items-center">
+            <h1 className="text-2xl md:text-3xl font-bold">Roles & Permissions</h1>
+            <Button onClick={() => setCreateRoleDialogOpen(true)}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Create Role
+            </Button>
+        </div>
         <Card>
             <CardHeader>
                 <CardTitle>Manage Role Privileges</CardTitle>
@@ -201,6 +256,67 @@ export default function RolesAndPermissionsPage() {
                 )}
             </CardContent>
         </Card>
+
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle>Manage Permissions</CardTitle>
+                    <CardDescription>Create, edit, and delete system-wide permissions.</CardDescription>
+                </div>
+                <Button onClick={handleOpenCreateDialog}>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Create Permission
+                </Button>
+            </CardHeader>
+            <CardContent>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Permission Name</TableHead>
+                            <TableHead>Category</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {permissions.map(permission => (
+                            <TableRow key={permission.id}>
+                                <TableCell>{permission.name}</TableCell>
+                                <TableCell>{permission.category}</TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(permission)}>
+                                        <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteDialog(permission)}>
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+
+        <CreateRoleDialog open={createRoleDialogOpen} onOpenChange={setCreateRoleDialogOpen} />
+        <CreateEditPermissionDialog 
+            open={isPermissionDialogOpen} 
+            onOpenChange={setPermissionDialogOpen} 
+            permission={editingPermission} 
+        />
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete the permission "{deletingPermission?.name}".
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleConfirmDelete}>Delete</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
     </div>
   );
 }

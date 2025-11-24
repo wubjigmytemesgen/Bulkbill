@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -63,17 +62,37 @@ const chatbotFlow = ai.defineFlow(
   async ({ query }) => {
     const context = await getDocumentationContext();
     
-    const response = await documentationChatbot({
-        query,
-        context,
-    });
-    
-    if (!response || !response.output) {
-      console.error("Chatbot AI response is missing output for query:", query);
-      return { answer: "I'm sorry, I encountered an error and cannot answer at this time." };
-    }
+    const maxRetries = 3;
+    let attempt = 0;
+    let delay = 2000; // start with 2 seconds
 
-    return response.output;
+    while (attempt < maxRetries) {
+      try {
+        const response = await documentationChatbot({
+            query,
+            context,
+        });
+        
+        if (!response || !response.output) {
+          console.error("Chatbot AI response is missing output for query:", query);
+          return { answer: "I'm sorry, I encountered an error and cannot answer at this time." };
+        }
+    
+        return response.output;
+      } catch (error: any) {
+        if (error.message.includes('429')) {
+          console.warn(`Rate limit exceeded. Retrying in ${delay / 1000} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2; // exponential backoff
+          attempt++;
+        } else {
+          throw error;
+        }
+      }
+    }
+    
+    console.error("Chatbot AI failed after multiple retries for query:", query);
+    return { answer: "I'm sorry, the service is currently busy. Please try again later." };
   }
 );
 

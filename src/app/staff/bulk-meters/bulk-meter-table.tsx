@@ -77,7 +77,6 @@ export function BulkMeterTable({ data, onEdit, onDelete, branches, canEdit, canD
                 <Badge 
                   variant={
                     bulkMeter.status === 'Active' ? 'default' 
-                    : bulkMeter.status === 'Decommissioned' ? 'destructive' 
                     : 'secondary'
                   }
                 >

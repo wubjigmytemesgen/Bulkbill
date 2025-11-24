@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from "react";
@@ -22,7 +21,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import type { StaffMember } from "../staff-management/staff-types";
 
-const bulkMeterCsvHeaders = ["name", "customerKeyNumber", "contractNumber", "meterSize", "meterNumber", "previousReading", "currentReading", "month", "specificArea", "subCity", "woreda", "branchId", "chargeGroup", "sewerageConnection", "xCoordinate", "yCoordinate"];
+const bulkMeterCsvHeaders = ["name", "customerKeyNumber", "contractNumber", "meterSize", "meterNumber", "previousReading", "currentReading", "month", "specificArea", "subCity", "woreda", "chargeGroup", "sewerageConnection", "xCoordinate", "yCoordinate", "branchId"];
 const individualCustomerCsvHeaders = ["name", "customerKeyNumber", "contractNumber", "customerType", "bookNumber", "ordinal", "meterSize", "meterNumber", "previousReading", "currentReading", "month", "specificArea", "subCity", "woreda", "sewerageConnection", "assignedBulkMeterId", "branchId"];
 
 
@@ -42,7 +41,7 @@ export default function AdminDataEntryPage() {
   const handleBulkMeterCsvUpload = async (data: BulkMeterDataEntryFormValues) => {
     if (!currentUser) return { success: false, message: "User not authenticated" };
     // Admins can upload directly as 'Active', others are 'Pending Approval'
-    const status: BulkMeterStatus = currentUser.role.toLowerCase() === 'admin' ? 'Active' : 'Pending Approval';
+    const status: BulkMeterStatus = 'Active';
     const bulkMeterDataWithStatus = { ...data, status };
     return await addBulkMeter(bulkMeterDataWithStatus, currentUser);
   };
@@ -50,7 +49,7 @@ export default function AdminDataEntryPage() {
   const handleIndividualCustomerCsvUpload = async (data: IndividualCustomerDataEntryFormValues) => {
      if (!currentUser) return { success: false, message: "User not authenticated" };
      // Admins can upload directly as 'Active', others are 'Pending Approval'
-     const status: IndividualCustomerStatus = currentUser.role.toLowerCase() === 'admin' ? 'Active' : 'Pending Approval';
+     const status: IndividualCustomerStatus = 'Active';
      const customerDataForStore = {
         ...data,
         status,

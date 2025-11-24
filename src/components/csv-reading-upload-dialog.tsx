@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from "react";
@@ -31,14 +30,15 @@ interface CsvReadingUploadDialogProps {
   currentUser: User | null | undefined;
 }
 
-const readingCsvHeaders = ["meter_number", "reading_value", "reading_date"];
-const CSV_SPLIT_REGEX = /,(?=(?:[^"]*"[^"]*")*[^"]*$)/;
+const readingCsvHeaders = ["meter_number", "reading_value", "reading_date", "branch_id"];
+const CSV_SPLIT_REGEX = /,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/;
 
 // Schema now validates for YYYY-MM format.
 const readingCsvRowSchema = z.object({
   meter_number: z.string().min(1, { message: "meter_number is required." }),
   reading_value: z.coerce.number().min(0, { message: "reading_value must be a non-negative number." }),
   reading_date: z.string().regex(/^\d{4}-\d{2}$/, { message: "Value must be in YYYY-MM format (e.g., 2024-05)." }),
+  branch_id: z.string().optional(),
 });
 
 
@@ -97,15 +97,18 @@ export function CsvReadingUploadDialog({ open, onOpenChange, meterType, meters, 
         return;
       }
 
-      const headerLine = lines[0].split(CSV_SPLIT_REGEX).map(h => h.trim().replace(/^"|"$/g, ''));
-      if (headerLine.length !== readingCsvHeaders.length || !readingCsvHeaders.every((h, i) => h === headerLine[i])) {
-         localErrors.push(`Invalid CSV headers. Expected: "${readingCsvHeaders.join(", ")}".`);
+      const headerLine = lines[0].split(CSV_SPLIT_REGEX).map(h => h.trim().replace(/^\"|\"$/g, ''));
+      const requiredHeaders = ["meter_number", "reading_value", "reading_date"];
+      const hasRequiredHeaders = requiredHeaders.every(rh => headerLine.includes(rh));
+
+      if (!hasRequiredHeaders) {
+         localErrors.push(`Invalid CSV headers. Expected at least: "${requiredHeaders.join(", ")}".`);
          finalizeProcessing();
          return;
       }
       
       for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(CSV_SPLIT_REGEX).map(v => v.trim().replace(/^"|"$/g, ''));
+        const values = lines[i].split(CSV_SPLIT_REGEX).map(v => v.trim().replace(/^\"|\"$/g, ''));
         const rowData = Object.fromEntries(headerLine.map((header, index) => [header, values[index]]));
 
         try {
@@ -113,10 +116,19 @@ export function CsvReadingUploadDialog({ open, onOpenChange, meterType, meters, 
           const parsedMonthDate = parse(validatedRow.reading_date, 'yyyy-MM', new Date());
           const endOfMonthDate = lastDayOfMonth(parsedMonthDate);
 
-          const meter = meters.find(m => m.meterNumber === validatedRow.meter_number);
+          let meterPool = meters;
+          if (validatedRow.branch_id) {
+            meterPool = meters.filter(m => (m as any).branchId === validatedRow.branch_id);
+          }
+
+          const meter = meterPool.find(m => m.meterNumber === validatedRow.meter_number);
 
           if (!meter) {
-            localErrors.push(`Row ${i + 1}: Meter number '${validatedRow.meter_number}' not found for this meter type.`);
+            let errorMsg = `Row ${i + 1}: Meter number '${validatedRow.meter_number}' not found for this meter type.`;
+            if (validatedRow.branch_id) {
+              errorMsg += ` in branch '${validatedRow.branch_id}'`;
+            }
+            localErrors.push(errorMsg);
             continue;
           }
           
@@ -151,7 +163,7 @@ export function CsvReadingUploadDialog({ open, onOpenChange, meterType, meters, 
 
         } catch (error) {
             if (error instanceof ZodError) {
-                const errorMessages = error.issues.map(issue => `Row ${i + 1}, Column '${issue.path.join('.')}': ${issue.message}`).join("; ");
+                const errorMessages = error.issues.map(issue => `Row ${i + 1}, Column '${issue.path.join('.')}' : ${issue.message}`).join("; ");
                 localErrors.push(errorMessages);
             } else {
                 localErrors.push(`Row ${i + 1}: Unknown validation error. ${(error as Error).message}`);
@@ -196,7 +208,7 @@ export function CsvReadingUploadDialog({ open, onOpenChange, meterType, meters, 
         <DialogHeader>
           <UIDialogTitle>Upload {meterType === 'individual' ? 'Individual Customer' : 'Bulk Meter'} Readings</UIDialogTitle>
           <UIDialogDescription>
-              Select a CSV file with columns: meter_number, reading_value, reading_date (in YYYY-MM format, e.g., 2024-05).
+              Select a CSV file with columns: meter_number, reading_value, reading_date (in YYYY-MM format, e.g., 2024-05), and an optional branch_id.
           </UIDialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">

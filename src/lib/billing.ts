@@ -73,10 +73,14 @@ export function calculateBillFromTariff(
     tariffConfig: TariffInfo,
     usageM3: number,
     meterSize: number,
-    sewerageConnection: SewerageConnection
+    sewerageConnection: SewerageConnection,
+    sewerageUsageM3?: number,
+    baseWaterChargeUsageM3?: number
 ): BillCalculationResult {
     const emptyResult: BillCalculationResult = { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, vatAmount: 0, meterRent: 0, sewerageCharge: 0 };
-    if (usageM3 < 0) return emptyResult;
+    
+    const usageForBaseWaterCharge = baseWaterChargeUsageM3 !== undefined ? baseWaterChargeUsageM3 : usageM3;
+    if (usageForBaseWaterCharge < 0) return emptyResult;
 
     const sortedTiers = (tariffConfig.tiers || []).sort((a, b) => {
         const limitA = a.limit === "Infinity" ? Infinity : Number(a.limit);
@@ -90,7 +94,7 @@ export function calculateBillFromTariff(
     const customerType = tariffConfig.customer_type;
 
     if (customerType === 'Domestic') {
-        let remainingUsage = usageM3;
+        let remainingUsage = usageForBaseWaterCharge;
         let lastLimit = 0;
         for (const tier of sortedTiers) {
             if (remainingUsage <= 0) break;
@@ -105,20 +109,20 @@ export function calculateBillFromTariff(
     } else if (customerType === 'rental domestic' || customerType === 'rental Non domestic') {
         if (sortedTiers.length >= 4) {
             const fourthTierRate = Number(sortedTiers[3].rate);
-            baseWaterCharge = Number(usageM3) * fourthTierRate;
+            baseWaterCharge = Number(usageForBaseWaterCharge) * fourthTierRate;
         } else if (sortedTiers.length > 0) {
             // Fallback if less than 4 tiers are defined, use the highest tier.
             const highestTierRate = Number(sortedTiers[sortedTiers.length - 1].rate);
-            baseWaterCharge = Number(usageM3) * highestTierRate;
+            baseWaterCharge = Number(usageForBaseWaterCharge) * highestTierRate;
         }
     } else if (customerType === 'Non-domestic') { 
         let applicableRate = 0;
         for (const tier of sortedTiers) {
             const tierLimit = tier.limit === "Infinity" ? Infinity : Number(tier.limit);
             applicableRate = Number(tier.rate);
-            if (usageM3 <= tierLimit) break;
+            if (usageForBaseWaterCharge <= tierLimit) break;
         }
-        baseWaterCharge = Number(usageM3) * Number(applicableRate);
+        baseWaterCharge = Number(usageForBaseWaterCharge) * Number(applicableRate);
     }
 
     const maintenanceFee = (tariffConfig.maintenance_percentage || 0) * baseWaterCharge;
@@ -126,22 +130,7 @@ export function calculateBillFromTariff(
 
     let vatAmount = 0;
     if ((customerType === 'Domestic' || customerType === 'rental domestic') && usageM3 > tariffConfig.domestic_vat_threshold_m3) {
-        let taxableWaterCharge = 0;
-        let usageForVatCalc = usageM3;
-        let lastLimit = 0;
-        for (const tier of sortedTiers) {
-            if (usageForVatCalc <= lastLimit) break;
-            const tierLimit = tier.limit === "Infinity" ? Infinity : Number(tier.limit);
-            const tierRate = Number(tier.rate);
-            const taxableStart = Math.max(lastLimit, tariffConfig.domestic_vat_threshold_m3);
-            const taxableEnd = Math.min(usageForVatCalc, tierLimit);
-            if (taxableEnd > taxableStart) {
-                const taxableUsageInTier = taxableEnd - taxableStart;
-                taxableWaterCharge += taxableUsageInTier * tierRate;
-            }
-            lastLimit = tierLimit;
-        }
-        vatAmount = taxableWaterCharge * (tariffConfig.vat_rate || 0);
+        vatAmount = baseWaterCharge * (tariffConfig.vat_rate || 0);
     } else if (customerType === 'Non-domestic' || customerType === 'rental Non domestic') {
         vatAmount = baseWaterCharge * (tariffConfig.vat_rate || 0);
     }
@@ -192,11 +181,12 @@ export function calculateBillFromTariff(
             }
         }
 
+    const usageForSewerage = sewerageUsageM3 !== undefined ? sewerageUsageM3 : usageM3;
     let sewerageCharge = 0;
     if (sewerageConnection === "Yes" && tariffConfig.sewerage_tiers && tariffConfig.sewerage_tiers.length > 0) {
         const sortedSewerageTiers = tariffConfig.sewerage_tiers.sort((a,b) => (a.limit === "Infinity" ? Infinity : Number(a.limit)) - (b.limit === "Infinity" ? Infinity : Number(b.limit)));
         if (customerType === 'Domestic' || customerType === 'rental domestic') {
-            let remainingUsage = usageM3;
+            let remainingUsage = usageForSewerage;
             let lastLimit = 0;
             for(const tier of sortedSewerageTiers) {
                 if (remainingUsage <= 0) break;
@@ -213,9 +203,9 @@ export function calculateBillFromTariff(
             for (const tier of sortedSewerageTiers) {
                 const tierLimit = tier.limit === "Infinity" ? Infinity : Number(tier.limit);
                 applicableRate = Number(tier.rate);
-                if (usageM3 <= tierLimit) break;
+                if (usageForSewerage <= tierLimit) break;
             }
-            sewerageCharge = Number(usageM3) * Number(applicableRate);
+            sewerageCharge = Number(usageForSewerage) * Number(applicableRate);
         }
     }
 
@@ -282,7 +272,9 @@ export async function calculateBill(
     customerType: CustomerType,
     sewerageConnection: SewerageConnection,
     meterSize: number,
-    billingMonth: string // e.g., "2024-05"
+    billingMonth: string, // e.g., "2024-05"
+    sewerageUsageM3?: number,
+    baseWaterChargeUsageM3?: number
 ): Promise<BillCalculationResult> {
     const emptyResult: BillCalculationResult = { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, vatAmount: 0, meterRent: 0, sewerageCharge: 0 };
 
@@ -299,5 +291,5 @@ export async function calculateBill(
             return emptyResult;
     }
 
-    return calculateBillFromTariff(tariffConfig, usageM3, meterSize, sewerageConnection);
+    return calculateBillFromTariff(tariffConfig, usageM3, meterSize, sewerageConnection, sewerageUsageM3, baseWaterChargeUsageM3);
 }

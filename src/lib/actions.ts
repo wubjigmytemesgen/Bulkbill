@@ -1,7 +1,4 @@
-
-
-'use server';
-
+'use server'
 import {
   dbCreateBranch,
   dbDeleteBranch,
@@ -41,9 +38,15 @@ import {
   dbGetAllReportLogs,
   dbUpdateReportLog,
   dbCreateNotification,
+  dbDeleteNotification,
   dbGetAllNotifications,
+  dbUpdateNotification,
   dbGetAllRoles,
+  dbCreateRole,
   dbGetAllPermissions,
+  dbCreatePermission,
+  dbUpdatePermission,
+  dbDeletePermission,
   dbGetAllRolePermissions,
   dbRpcUpdateRolePermissions,
   dbGetAllTariffs,
@@ -62,6 +65,9 @@ type PublicTables = Database['public']['Tables'];
 type RoleRow = PublicTables['roles']['Row'];
 type PermissionRow = PublicTables['permissions']['Row'];
 type RolePermissionRow = PublicTables['role_permissions']['Row'];
+type RoleInsert = PublicTables['roles']['Insert'];
+type PermissionInsert = PublicTables['permissions']['Insert'];
+type PermissionUpdate = PublicTables['permissions']['Update'];
 type Branch = PublicTables['branches']['Row'];
 type BulkMeterRow = PublicTables['bulk_meters']['Row'];
 type IndividualCustomer = PublicTables['individual_customers']['Row'];
@@ -95,13 +101,14 @@ type PaymentUpdate = PublicTables['payments']['Update'];
 type ReportLogInsert = PublicTables['reports']['Insert'];
 type ReportLogUpdate = PublicTables['reports']['Update'];
 type NotificationInsert = PublicTables['notifications']['Insert'];
+type NotificationUpdate = PublicTables['notifications']['Update'];
 type TariffInsert = PublicTables['tariffs']['Insert'];
 type TariffUpdate = PublicTables['tariffs']['Update'];
 type KnowledgeBaseArticleInsert = PublicTables['knowledge_base_articles']['Insert'];
 type KnowledgeBaseArticleUpdate = PublicTables['knowledge_base_articles']['Update'];
 
 
-export type { RoleRow, PermissionRow, RolePermissionRow, Branch, BulkMeterRow, IndividualCustomer, StaffMember, Bill, IndividualCustomerReading, BulkMeterReading, Payment, ReportLog, NotificationRow, BranchInsert, BranchUpdate, BulkMeterInsert, BulkMeterUpdate, IndividualCustomerInsert, IndividualCustomerUpdate, StaffMemberInsert, StaffMemberUpdate, BillInsert, BillUpdate, IndividualCustomerReadingInsert, IndividualCustomerReadingUpdate, BulkMeterReadingInsert, BulkMeterReadingUpdate, PaymentInsert, PaymentUpdate, ReportLogInsert, ReportLogUpdate, NotificationInsert, TariffRow, TariffInsert, TariffUpdate, KnowledgeBaseArticleInsert, KnowledgeBaseArticleUpdate, KnowledgeBaseArticleRow };
+export type { RoleRow, PermissionRow, RolePermissionRow, Branch, BulkMeterRow, IndividualCustomer, StaffMember, Bill, IndividualCustomerReading, BulkMeterReading, Payment, ReportLog, NotificationRow, BranchInsert, BranchUpdate, BulkMeterInsert, BulkMeterUpdate, IndividualCustomerInsert, IndividualCustomerUpdate, StaffMemberInsert, StaffMemberUpdate, BillInsert, BillUpdate, IndividualCustomerReadingInsert, IndividualCustomerReadingUpdate, BulkMeterReadingInsert, BulkMeterReadingUpdate, PaymentInsert, PaymentUpdate, ReportLogInsert, ReportLogUpdate, NotificationInsert, NotificationUpdate, TariffRow, TariffInsert, TariffUpdate, KnowledgeBaseArticleInsert, KnowledgeBaseArticleUpdate, KnowledgeBaseArticleRow };
 
 
 const wrap = async <T>(fn: () => Promise<T>) => {
@@ -109,7 +116,13 @@ const wrap = async <T>(fn: () => Promise<T>) => {
     const data = await fn();
     return { data, error: null } as any;
   } catch (e) {
-    return { data: null, error: e } as any;
+    // Ensure the full error is serialized, not just a generic object
+    const errorObject = e instanceof Error 
+      ? { name: e.name, message: e.message, stack: e.stack } 
+      : typeof e === 'object' && e !== null 
+        ? e 
+        : { message: String(e) };
+    return { data: null, error: errorObject } as any;
   }
 };
 
@@ -160,10 +173,16 @@ export async function updateReportLogAction(id: string, log: ReportLogUpdate) { 
 export async function deleteReportLogAction(id: string) { return await wrap(() => dbDeleteReportLog(id)); }
 
 export async function getAllNotificationsAction() { return await wrap(() => dbGetAllNotifications()); }
+export async function deleteNotificationAction(id: string) { return await wrap(() => dbDeleteNotification(id)); }
+export async function updateNotificationAction(id: string, notification: NotificationUpdate) { return await wrap(() => dbUpdateNotification(id, notification)); }
 export async function createNotificationAction(notification: NotificationInsert) { return await wrap(() => dbCreateNotification(notification)); }
 
 export async function getAllRolesAction() { return await wrap(() => dbGetAllRoles()); }
+export async function createRoleAction(role: RoleInsert) { return await wrap(() => dbCreateRole(role)); }
 export async function getAllPermissionsAction() { return await wrap(() => dbGetAllPermissions()); }
+export const createPermissionAction = async (permission: PermissionInsert) => await wrap(() => dbCreatePermission(permission));
+export const updatePermissionAction = async (id: number, permission: PermissionUpdate) => await wrap(() => dbUpdatePermission(id, permission));
+export const deletePermissionAction = async (id: number) => await wrap(() => dbDeletePermission(id));
 export async function getAllRolePermissionsAction() { return await wrap(() => dbGetAllRolePermissions()); }
 
 export async function rpcUpdateRolePermissionsAction(roleId: number, permissionIds: number[]) {
@@ -181,4 +200,3 @@ export async function getAllKnowledgeBaseArticlesAction() { return await wrap(()
 export async function createKnowledgeBaseArticleAction(article: KnowledgeBaseArticleInsert) { return await wrap(() => dbCreateKnowledgeBaseArticle(article)); }
 export async function updateKnowledgeBaseArticleAction(id: number, article: KnowledgeBaseArticleUpdate) { return await wrap(() => dbUpdateKnowledgeBaseArticle(id, article)); }
 export async function deleteKnowledgeBaseArticleAction(id: number) { return await wrap(() => dbDeleteKnowledgeBaseArticle(id)); }
-

@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -15,10 +14,17 @@ import {
   getBulkMeters,
   getBills,
   getBranches,
+  getTariffs,
+  getMeterReadings,
+  getStaffMembers,
   initializeBills,
   initializeBranches,
   initializeBulkMeters,
   initializeCustomers,
+  initializeTariffs,
+  initializeIndividualCustomerReadings,
+  initializeBulkMeterReadings,
+  initializeStaffMembers,
 } from '@/lib/data-store';
 import type { IndividualCustomer, BulkMeterRow as BulkMeter, Branch, DomainBill } from '@/lib/data-store';
 import { ReportRequestSchema, ReportResponseSchema, type ReportRequest, type ReportResponse } from './report-flow-types';
@@ -31,6 +37,10 @@ const ensureDataInitialized = async () => {
     initializeCustomers(),
     initializeBulkMeters(),
     initializeBills(),
+    initializeTariffs(),
+    initializeIndividualCustomerReadings(),
+    initializeBulkMeterReadings(),
+    initializeStaffMembers(),
   ]);
 };
 
@@ -113,6 +123,48 @@ const getCustomersTool = ai.defineTool(
     }
 );
 
+// Tool to get tariffs
+const getTariffsTool = ai.defineTool(
+    {
+      name: 'getTariffs',
+      description: 'Retrieves a list of all tariffs.',
+      inputSchema: z.object({}),
+      outputSchema: z.array(z.any()),
+    },
+    async () => {
+        await ensureDataInitialized();
+        return getTariffs();
+    }
+);
+
+// Tool to get meter readings
+const getMeterReadingsTool = ai.defineTool(
+    {
+      name: 'getMeterReadings',
+      description: 'Retrieves a list of all meter readings.',
+      inputSchema: z.object({}),
+      outputSchema: z.array(z.any()),
+    },
+    async () => {
+        await ensureDataInitialized();
+        return getMeterReadings();
+    }
+);
+
+// Tool to get staff members
+const getStaffTool = ai.defineTool(
+    {
+        name: 'getStaff',
+        description: 'Retrieves a list of staff members.',
+        inputSchema: z.object({}),
+        outputSchema: z.array(z.any()),
+    },
+    async () => {
+        await ensureDataInitialized();
+        return getStaffMembers();
+    }
+);
+
 
 const reportGeneratorAgent = ai.definePrompt({
     name: 'reportGeneratorAgent',
@@ -128,7 +180,7 @@ const reportGeneratorAgent = ai.definePrompt({
     - ALWAYS return the data in the 'data' field, the summary in the 'summary' field, and the headers in the 'headers' field.
     - If the tool returns no data, provide a summary saying so and return an empty array for data and headers.
     `,
-    tools: [getBillsTool, getCustomersTool],
+    tools: [getBillsTool, getCustomersTool, getTariffsTool, getMeterReadingsTool, getStaffTool],
 });
 
 

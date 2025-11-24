@@ -23,7 +23,7 @@ import {
   Sidebar,
   SidebarHeader,
   SidebarContent,
-  SidebarFooter,
+
   SidebarTrigger,
   SidebarInset,
   useSidebar,
@@ -152,16 +152,17 @@ export function AppShell({ user, userRole, sidebar, children }: { user: UserProf
         <SidebarContent>
           {sidebar}
         </SidebarContent>
-        <SidebarFooter className="text-xs text-center text-muted-foreground p-2">
-          Design and Developed by Daniel Temesgen
-          &copy; {currentYear} {appName}. All rights reserved.
-        </SidebarFooter>
+
       </Sidebar>
       <SidebarInset> 
         <AppHeaderContent user={user} appName={appName} onLogout={handleLogout} />
         <main className="flex-1 p-4 sm:p-6 space-y-6 bg-background">
           {children}
         </main>
+        <footer className="text-xs text-center text-muted-foreground p-4">
+          Design and Developed by Daniel Temesgen
+          &copy; {currentYear} {appName}. All rights reserved.
+        </footer>
         <ChatbotWidget />
       </SidebarInset>
     </SidebarProvider>

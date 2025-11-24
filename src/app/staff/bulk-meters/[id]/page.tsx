@@ -17,7 +17,7 @@ import {
   getBulkMeters, getCustomers, updateBulkMeter as updateBulkMeterInStore, deleteBulkMeter as deleteBulkMeterFromStore,
   updateCustomer as updateCustomerInStore, deleteCustomer as deleteCustomerFromStore, subscribeToBulkMeters, subscribeToCustomers,
   initializeBulkMeters, initializeCustomers, getBulkMeterReadings, initializeBulkMeterReadings, subscribeToBulkMeterReadings,
-  addBill, addBulkMeterReading, removeBill, getBulkMeterByCustomerKey,
+  addBill, addBulkMeterReading, removeBill,
   getBranches, initializeBranches, subscribeToBranches
 } from "@/lib/data-store";
 import { getBills, initializeBills, subscribeToBills } from "@/lib/data-store";
@@ -64,7 +64,7 @@ export default function StaffBulkMeterDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
-  const bulkMeterKey = params.id as string;
+  const bulkMeterKey = params?.id ? String(params.id) : "";
 
   const [bulkMeter, setBulkMeter] = useState<BulkMeter | null>(null);
   const [associatedCustomers, setAssociatedCustomers] = useState<IndividualCustomer[]>([]);
@@ -141,7 +141,7 @@ export default function StaffBulkMeterDetailsPage() {
     const effectiveBulkMeterSewerageConnection: SewerageConnection = currentBulkMeter.sewerageConnection || "No";
     const billingMonth = currentBulkMeter.month || format(new Date(), 'yyyy-MM');
   
-    const { totalBill: totalBulkBillForPeriod } = await calculateBill(bulkUsage, effectiveBulkMeterCustomerType, effectiveBulkMeterSewerageConnection, currentBulkMeter.meterSize, billingMonth);
+    const { totalBill: totalBulkBillForPeriod } = await calculateBill(Math.max(0, bulkUsage), effectiveBulkMeterCustomerType, effectiveBulkMeterSewerageConnection, currentBulkMeter.meterSize, billingMonth);
   
     const outStandingBillValue = currentBulkMeter.outStandingbill ?? 0;
   
@@ -149,16 +149,11 @@ export default function StaffBulkMeterDetailsPage() {
   
     let differenceUsage = bulkUsage - totalIndividualUsage;
 
-    // Apply specific adjustment rules
-    if (differenceUsage === 0) {
-      differenceUsage += 3;
-    } else if (differenceUsage === 1) {
-      differenceUsage += 2;
-    } else if (differenceUsage === 2) {
-      differenceUsage += 1;
+    if (differenceUsage < 0) {
+      differenceUsage = 3;
     }
   
-  const differenceFull = await calculateBill(differenceUsage, effectiveBulkMeterCustomerType, effectiveBulkMeterSewerageConnection, currentBulkMeter.meterSize, billingMonth);
+  const differenceFull = await calculateBill(differenceUsage, effectiveBulkMeterCustomerType, effectiveBulkMeterSewerageConnection, currentBulkMeter.meterSize, billingMonth, bulkUsage);
   const differenceBill = differenceFull.totalBill;
   const differenceBillBreakdown = differenceFull;
 
@@ -220,8 +215,10 @@ export default function StaffBulkMeterDetailsPage() {
     if (storedUser) {
       try {
         const parsedUser: UserAuth = JSON.parse(storedUser);
-        if (parsedUser.role.toLowerCase() === "staff" && parsedUser.branchId) {
-          if(isMounted) setStaffBranchId(parsedUser.branchId);
+        const role = (parsedUser.role || "").toLowerCase().trim();
+        // Treat both plain "staff" and "staff management" as branch-scoped roles
+        if ((role === "staff" || role === "staff management") && parsedUser.branchId) {
+          if (isMounted) setStaffBranchId(parsedUser.branchId);
           localBranchId = parsedUser.branchId;
         }
       } catch (e) { console.error("Failed to parse user from localStorage", e); }
@@ -576,52 +573,45 @@ export default function StaffBulkMeterDetailsPage() {
   const handleEndOfCycle = async (carryBalance: boolean) => {
     if (!bulkMeter || isProcessingCycle) return;
     setIsProcessingCycle(true);
-
     try {
-      const currentBulkMeterState = await getBulkMeterByCustomerKey(bulkMeter.customerKeyNumber);
-      if(!currentBulkMeterState.success || !currentBulkMeterState.data) {
-        toast({ variant: "destructive", title: "Error", description: "Could not fetch latest meter data before closing cycle." });
-        setIsProcessingCycle(false);
-        return;
-      }
+      // Use the current bulkMeter and associatedCustomers state to compute the bill
+      const parsedMonth = bulkMeter.month || format(new Date(), 'yyyy-MM');
 
-      const latestMeterData = currentBulkMeterState.data;
-      const parsedMonth = latestMeterData.month;
-
-      if (!parsedMonth) {
-          toast({ variant: "destructive", title: "Billing Month Missing", description: "The meter does not have a billing month set." });
-          setIsProcessingCycle(false);
-          return;
-      }
-      
       const parsedDate = parseISO(`${parsedMonth}-01`);
       if (isNaN(parsedDate.getTime())) {
-        toast({
-            variant: "destructive",
-            title: "Invalid Month Format",
-            description: `The billing month for this meter ("${parsedMonth}") is not a valid YYYY-MM format.`,
-        });
-        setIsProcessingCycle(false);
+        toast({ variant: "destructive", title: "Invalid Month Format", description: `The billing month for this meter ("${parsedMonth}") is not a valid YYYY-MM format.` });
         return;
       }
-      
-      const bmUsage = (latestMeterData.currentReading ?? 0) - (latestMeterData.previousReading ?? 0);
-      const totalIndivUsage = associatedCustomers.reduce((sum, cust) => sum + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0);
-      let differenceUsageForCycle = bmUsage - totalIndivUsage;
 
-      // Apply specific adjustment rules
-      if (differenceUsageForCycle === 0) {
-        differenceUsageForCycle += 3;
-      } else if (differenceUsageForCycle === 1) {
-        differenceUsageForCycle += 2;
-      } else if (differenceUsageForCycle === 2) {
-        differenceUsageForCycle += 1;
+      const prev = Number(bulkMeter.previousReading ?? 0);
+      const curr = Number(bulkMeter.currentReading ?? 0);
+
+      if (isNaN(prev) || isNaN(curr)) {
+        toast({ variant: "destructive", title: "Missing Readings", description: "The bulk meter must have previous and current readings to close the billing cycle." });
+        return;
       }
 
-      const chargeGroup = latestMeterData.chargeGroup as CustomerType || 'Non-domestic';
-      const sewerageConn = latestMeterData.sewerageConnection || 'No';
-      const { totalBill: billForDifferenceUsage, ...differenceBillBreakdownForCycle } = await calculateBill(differenceUsageForCycle, chargeGroup, sewerageConn, latestMeterData.meterSize, parsedMonth);
-      const balanceFromPreviousPeriods = latestMeterData.outStandingbill || 0;
+      const bmUsage = curr - prev;
+      const totalIndivUsage = associatedCustomers.reduce((sum, cust) => sum + ((Number(cust.currentReading ?? 0) - Number(cust.previousReading ?? 0)) || 0), 0);
+      let differenceUsageForCycle = bmUsage - totalIndivUsage;
+
+      if (differenceUsageForCycle <= 2) {
+        differenceUsageForCycle = 3;
+      }
+
+      const chargeGroup = (bulkMeter.chargeGroup as CustomerType) || 'Non-domestic';
+      const sewerageConn = bulkMeter.sewerageConnection || 'No';
+
+      const { totalBill: billForDifferenceUsage, ...differenceBillBreakdownForCycle } = await calculateBill(
+        differenceUsageForCycle,
+        chargeGroup,
+        sewerageConn,
+        bulkMeter.meterSize,
+        parsedMonth,
+        bmUsage
+      );
+
+      const balanceFromPreviousPeriods = bulkMeter.outStandingbill ?? 0;
       const totalPayableForCycle = billForDifferenceUsage + balanceFromPreviousPeriods;
 
       const billDate = new Date();
@@ -630,13 +620,13 @@ export default function StaffBulkMeterDetailsPage() {
       dueDateObject.setDate(dueDateObject.getDate() + 15);
 
       const billToSave: Omit<DomainBill, 'id' | 'createdAt' | 'updatedAt'> = {
-        bulkMeterId: latestMeterData.customerKeyNumber,
+        bulkMeterId: bulkMeter.customerKeyNumber,
         billPeriodStartDate: `${parsedMonth}-01`,
         billPeriodEndDate: format(periodEndDate, 'yyyy-MM-dd'),
         monthYear: parsedMonth,
-        previousReadingValue: latestMeterData.previousReading,
-        currentReadingValue: latestMeterData.currentReading,
-        usageM3: (latestMeterData.currentReading ?? 0) - (latestMeterData.previousReading ?? 0),
+        previousReadingValue: prev,
+        currentReadingValue: curr,
+        usageM3: bmUsage,
         differenceUsage: differenceUsageForCycle,
         ...differenceBillBreakdownForCycle,
         balanceCarriedForward: balanceFromPreviousPeriods,
@@ -645,40 +635,37 @@ export default function StaffBulkMeterDetailsPage() {
         paymentStatus: carryBalance ? 'Unpaid' : 'Paid',
         notes: `Bill generated on ${format(billDate, 'PP')}. Total payable was ${totalPayableForCycle.toFixed(2)}.`,
       };
-      
+
       const addBillResult = await addBill(billToSave);
       if (!addBillResult.success || !addBillResult.data) {
         toast({ variant: "destructive", title: "Failed to Save Bill", description: addBillResult.message });
-        setIsProcessingCycle(false);
         return;
       }
 
       const newOutstandingBalance = carryBalance ? totalPayableForCycle : 0;
-
       const updatePayload: Partial<Omit<BulkMeter, 'customerKeyNumber'>> = {
-          previousReading: latestMeterData.currentReading,
-          outStandingbill: newOutstandingBalance,
-          paymentStatus: carryBalance ? 'Unpaid' : 'Paid',
+        previousReading: curr,
+        outStandingbill: newOutstandingBalance,
+        paymentStatus: carryBalance ? 'Unpaid' : 'Paid',
       };
 
-      const updateResult = await updateBulkMeterInStore(latestMeterData.customerKeyNumber, updatePayload);
+      const updateResult = await updateBulkMeterInStore(bulkMeter.customerKeyNumber, updatePayload);
       if (updateResult.success && updateResult.data) {
-         toast({ 
-            title: "Billing Cycle Closed", 
-            description: carryBalance 
-                ? `Total of ETB ${totalPayableForCycle.toFixed(2)} carried forward as new outstanding balance.` 
-                : "Bill marked as paid and new cycle started." 
-        });
+        toast({ title: "Billing Cycle Closed", description: carryBalance ? `Total of ETB ${totalPayableForCycle.toFixed(2)} carried forward as new outstanding balance.` : "Bill marked as paid and new cycle started." });
+        // Refresh local state to reflect update
+        setBulkMeter({ ...bulkMeter, ...updateResult.data });
+        // Optionally refresh billing history to include the newly created bill
+        setBillingHistory([addBillResult.data, ...billingHistory]);
       } else {
+        // rollback created bill
         await removeBill(addBillResult.data.id);
         toast({ variant: "destructive", title: "Update Failed", description: "Could not update the meter. The new bill has been rolled back." });
       }
-
-    } catch(error) {
-        console.error("Error during end of cycle process:", error);
-        toast({ variant: "destructive", title: "Processing Error", description: "An unexpected error occurred while closing the billing cycle." });
+    } catch (error) {
+      console.error("Error during end of cycle process:", error);
+      toast({ variant: "destructive", title: "Processing Error", description: "An unexpected error occurred while closing the billing cycle." });
     } finally {
-        setIsProcessingCycle(false);
+      setIsProcessingCycle(false);
     }
   };
   
@@ -953,7 +940,12 @@ export default function StaffBulkMeterDetailsPage() {
                     <TableBody>
                       {paginatedReadingHistory.map(reading => (
                         <TableRow key={reading.id}>
-                          <TableCell>{format(parseISO(reading.readingDate), "PP")}</TableCell>
+                          <TableCell>{format(
+                            Object.prototype.toString.call(reading.readingDate) === '[object Date]'
+                              ? (reading.readingDate as unknown as Date)
+                              : parseISO(reading.readingDate as string),
+                            "PP"
+                          )}</TableCell>
                           <TableCell className="text-right">{reading.readingValue.toFixed(2)}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{reading.notes}</TableCell>
                         </TableRow>
@@ -993,7 +985,14 @@ export default function StaffBulkMeterDetailsPage() {
                       <div className="flex justify-between items-start">
                         <div>
                           <p className="font-bold">{bill.monthYear}</p>
-                          <p className="text-sm text-muted-foreground">Billed: {format(parseISO(bill.billPeriodEndDate), "PP")}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Billed: {format(
+                              Object.prototype.toString.call(bill.billPeriodEndDate) === '[object Date]'
+                                ? (bill.billPeriodEndDate as unknown as Date)
+                                : parseISO(bill.billPeriodEndDate as string),
+                              "PP"
+                            )}
+                          </p>
                         </div>
                         <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handlePrintSlip(bill)}><Printer className="mr-2 h-4 w-4" />Print/Export Bill</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteBillingRecord(bill)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Record</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
                       </div>
@@ -1020,7 +1019,12 @@ export default function StaffBulkMeterDetailsPage() {
                 return (
                 <TableRow key={bill.id ?? `${bill.monthYear}-${String(bill.billPeriodEndDate)}-${_billIndex}`}>
                   <TableCell>{bill.monthYear}</TableCell>
-                  <TableCell>{format(parseISO(bill.billPeriodEndDate), "PP")}</TableCell>
+                  <TableCell>{format(
+                    Object.prototype.toString.call(bill.billPeriodEndDate) === '[object Date]'
+                      ? (bill.billPeriodEndDate as unknown as Date)
+                      : parseISO(bill.billPeriodEndDate as string),
+                    "PP"
+                  )}</TableCell>
                   <TableCell className="text-right">{bill.previousReadingValue.toFixed(2)}</TableCell>
                   <TableCell className="text-right">{bill.currentReadingValue.toFixed(2)}</TableCell>
                   <TableCell>{displayUsage}</TableCell>

@@ -69,15 +69,68 @@ export default function StaffDashboardPage() {
     if (userString) {
       try {
         const parsedUser: User = JSON.parse(userString);
-        if (
-          parsedUser.role.toLowerCase() === "staff" &&
-          parsedUser.branchId &&
-          parsedUser.branchName &&
-          parsedUser.branchName !== 'Unknown Branch'
-        ) {
-          setStaffBranchName(parsedUser.branchName);
-          setStaffBranchId(parsedUser.branchId);
-          setAuthStatus('authorized');
+        // Accept staff role and attempt to resolve missing branchId from branchName if necessary.
+        if (parsedUser.role && parsedUser.role.toLowerCase() === "staff") {
+          const hasValidBranchName = parsedUser.branchName && parsedUser.branchName !== 'Unknown Branch';
+          // If branchId is present and branchName looks valid, authorize immediately
+          if (parsedUser.branchId && hasValidBranchName) {
+            setStaffBranchName(parsedUser.branchName ?? null);
+            setStaffBranchId(parsedUser.branchId ?? null);
+            setAuthStatus('authorized');
+          } else if (hasValidBranchName) {
+            // Try to resolve branchId from known branches (case-insensitive match or id fallback)
+            (async () => {
+              try {
+                await initializeBranches();
+                const branches = getBranches();
+                const target = parsedUser.branchName || '';
+                let branch = branches.find(b => b.name === target);
+                if (!branch) {
+                  const targetLower = target.toLowerCase();
+                  branch = branches.find(b => (b.name || '').toLowerCase() === targetLower);
+                }
+                if (!branch) {
+                  branch = branches.find(b => String(b.id) === String(target));
+                }
+                if (branch) {
+                  parsedUser.branchId = branch.id;
+                  // persist resolved branchId so subsequent loads won't need to re-resolve
+                  try { localStorage.setItem('user', JSON.stringify(parsedUser)); } catch (e) { /* ignore */ }
+                  setStaffBranchName(parsedUser.branchName ?? null);
+                  setStaffBranchId(parsedUser.branchId ?? null);
+                  setAuthStatus('authorized');
+                } else {
+                  setAuthStatus('unauthorized');
+                }
+              } catch (e) {
+                console.error('Failed to resolve branch during auth check:', e);
+                setAuthStatus('unauthorized');
+              }
+            })();
+          } else if (parsedUser.branchId) {
+            // branchId present but branchName missing - try to fill branchName for display
+            (async () => {
+              try {
+                await initializeBranches();
+                const branches = getBranches();
+                const branch = branches.find(b => String(b.id) === String(parsedUser.branchId));
+                if (branch) {
+                  parsedUser.branchName = branch.name;
+                  try { localStorage.setItem('user', JSON.stringify(parsedUser)); } catch (e) { /* ignore */ }
+                  setStaffBranchName(parsedUser.branchName ?? null);
+                  setStaffBranchId(parsedUser.branchId ?? null);
+                  setAuthStatus('authorized');
+                } else {
+                  setAuthStatus('unauthorized');
+                }
+              } catch (e) {
+                console.error('Failed to fetch branches during auth check:', e);
+                setAuthStatus('unauthorized');
+              }
+            })();
+          } else {
+            setAuthStatus('unauthorized');
+          }
         } else {
           setAuthStatus('unauthorized');
         }

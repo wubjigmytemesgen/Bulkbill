@@ -149,7 +149,14 @@ export default function IndividualCustomersPage() {
     return fallbackLocation || "";
   };
 
-  const filteredCustomers = customers.filter(customer => {
+  const customersForUser = React.useMemo(() => {
+    if (currentUser?.role?.toLowerCase() === 'staff management' && currentUser.branchId) {
+      return customers.filter(customer => customer.branchId === currentUser.branchId);
+    }
+    return customers;
+  }, [customers, currentUser]);
+
+  const filteredCustomers = customersForUser.filter(customer => {
     const branchName = getBranchNameFromList(customer.branchId, customer.subCity);
     return (
         customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

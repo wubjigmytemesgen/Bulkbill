@@ -1,9 +1,7 @@
-
-
 "use client";
 
 import * as React from "react";
-import { PlusCircle, Gauge, Search } from "lucide-react";
+import { PlusCircle, Gauge, Search, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,12 +19,18 @@ import {
   initializeBulkMeters,
   getBranches,
   initializeBranches,
-  subscribeToBranches
+  subscribeToBranches,
+  getBills,
+  addBill,
+  updateExistingBill,
+  getCustomers
 } from "@/lib/data-store";
 import type { Branch } from "../branches/branch-types";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { StaffMember } from "../staff-management/staff-types";
+import { format, parseISO, lastDayOfMonth } from "date-fns";
+import { calculateBill, type CustomerType, type SewerageConnection, type PaymentStatus, type BillCalculationResult } from "@/lib/billing";
 
 export default function BulkMetersPage() {
   const { hasPermission } = usePermissions();
@@ -40,6 +44,7 @@ export default function BulkMetersPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedBulkMeter, setSelectedBulkMeter] = React.useState<BulkMeter | null>(null);
   const [bulkMeterToDelete, setBulkMeterToDelete] = React.useState<BulkMeter | null>(null);
+  const [isBulkCycleDialogOpen, setIsBulkCycleDialogOpen] = React.useState(false);
 
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
@@ -123,12 +128,112 @@ export default function BulkMetersPage() {
     setSelectedBulkMeter(null);
   };
 
-  const filteredBulkMeters = bulkMeters.filter(bm =>
+  const handleBulkCycle = async (carryBalance: boolean) => {
+    setIsBulkCycleDialogOpen(false);
+    toast({ title: "Processing Bulk Cycle", description: "This may take a moment..." });
+
+    const allBills = getBills();
+    const metersToProcess = bulkMeters.filter(bm => 
+      !allBills.some(bill => bill.bulkMeterId === bm.customerKeyNumber && bill.monthYear === bm.month)
+    );
+
+    let successCount = 0;
+    let skippedCount = bulkMeters.length - metersToProcess.length;
+
+    for (const bulkMeter of metersToProcess) {
+      const result = await handleEndOfCycle(bulkMeter, carryBalance);
+      if (result.success) {
+        successCount++;
+      } else {
+        toast({ variant: "destructive", title: `Failed to process ${bulkMeter.name}`, description: result.message });
+      }
+    }
+
+    toast({ title: "Bulk Cycle Complete", description: `${successCount} meters processed. ${skippedCount} skipped.` });
+  };
+
+  const handleEndOfCycle = async (bulkMeter: BulkMeter, carryBalance: boolean) => {
+    const associatedCustomers = getCustomers().filter(c => c.assignedBulkMeterId === bulkMeter.customerKeyNumber);
+    const bmUsage = (bulkMeter.currentReading ?? 0) - (bulkMeter.previousReading ?? 0);
+    const totalIndivUsage = associatedCustomers.reduce((sum, cust) => sum + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0);
+    let differenceUsageForCycle = bmUsage - totalIndivUsage;
+
+    if (bmUsage < totalIndivUsage) {
+      differenceUsageForCycle = 3;
+    }
+
+    if (differenceUsageForCycle === 0) {
+      differenceUsageForCycle += 3;
+    } else if (differenceUsageForCycle === 1) {
+      differenceUsageForCycle += 2;
+    } else if (differenceUsageForCycle === 2) {
+      differenceUsageForCycle += 1;
+    }
+
+    const chargeGroup = bulkMeter.chargeGroup as CustomerType || 'Non-domestic';
+    const sewerageConn = bulkMeter.sewerageConnection || 'No';
+    const { totalBill: billForDifferenceUsage, ...differenceBillBreakdownForCycle } = await calculateBill(differenceUsageForCycle, chargeGroup, sewerageConn, bulkMeter.meterSize, bulkMeter.month!);
+    
+    const balanceFromPreviousPeriods = bulkMeter.outStandingbill || 0;
+    const totalPayableForCycle = billForDifferenceUsage + balanceFromPreviousPeriods;
+    
+    const billDate = new Date();
+    const periodEndDate = lastDayOfMonth(parseISO(`${bulkMeter.month}-01`));
+    const dueDateObject = new Date(periodEndDate);
+    dueDateObject.setDate(dueDateObject.getDate() + 15);
+
+    const billToSave = {
+      bulkMeterId: bulkMeter.customerKeyNumber,
+      billPeriodStartDate: `${bulkMeter.month}-01`,
+      billPeriodEndDate: format(periodEndDate, 'yyyy-MM-dd'),
+      monthYear: bulkMeter.month!,
+      previousReadingValue: bulkMeter.previousReading,
+      currentReadingValue: bulkMeter.currentReading,
+      usageM3: (bulkMeter.currentReading ?? 0) - (bulkMeter.previousReading ?? 0),
+      differenceUsage: differenceUsageForCycle,
+      ...differenceBillBreakdownForCycle,
+      balanceCarriedForward: balanceFromPreviousPeriods,
+      totalAmountDue: billForDifferenceUsage,
+      dueDate: format(dueDateObject, 'yyyy-MM-dd'),
+      paymentStatus: carryBalance ? 'Unpaid' : 'Paid',
+      notes: `Bill generated on ${format(billDate, 'PP')}. Total payable was ${totalPayableForCycle.toFixed(2)}.`,
+    };
+
+    const addBillResult = await addBill(billToSave as any);
+    if (!addBillResult.success || !addBillResult.data) {
+      return { success: false, message: addBillResult.message };
+    }
+
+    const newOutstandingBalance = carryBalance ? totalPayableForCycle : 0;
+    
+    const updatePayload = {
+        previousReading: bulkMeter.currentReading,
+        outStandingbill: newOutstandingBalance,
+        paymentStatus: carryBalance ? 'Unpaid' : 'Paid',
+    };
+
+    const updateResult = await updateBulkMeterInStore(bulkMeter.customerKeyNumber, updatePayload);
+    if (updateResult.success && updateResult.data) {
+      return { success: true };
+    } else {
+      await deleteBulkMeterFromStore(addBillResult.data.id);
+      return { success: false, message: "Could not update the meter. The new bill has been rolled back." };
+    }
+  };
+
+  const metersForUser = React.useMemo(() => {
+    if (currentUser?.role?.toLowerCase() === 'staff management' && currentUser.branchId) {
+      return bulkMeters.filter(meter => meter.branchId === currentUser.branchId);
+    }
+    return bulkMeters;
+  }, [bulkMeters, currentUser]);
+
+  const filteredBulkMeters = metersForUser.filter(bm =>
     bm.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     bm.meterNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (bm.branchId && branches.find(b => b.id === bm.branchId)?.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
     bm.subCity.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bm.woreda.toLowerCase().includes(searchTerm.toLowerCase())
+    bm.contractNumber.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
   const paginatedBulkMeters = filteredBulkMeters.slice(
@@ -152,6 +257,16 @@ export default function BulkMetersPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-red-500 text-white hover:bg-red-600"
+            onClick={() => setIsBulkCycleDialogOpen(true)}
+            disabled={isLoading}
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            Bulk Cycle Actions
+          </Button>
           {hasPermission('bulk_meters_create') && (
             <Button onClick={handleAddBulkMeter} className="flex-shrink-0">
               <PlusCircle className="mr-2 h-4 w-4" /> Add New
@@ -227,6 +342,22 @@ export default function BulkMetersPage() {
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      <AlertDialog open={isBulkCycleDialogOpen} onOpenChange={setIsBulkCycleDialogOpen}>
+        <AlertDialogContent className="md:max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bulk Billing Cycle Actions</AlertDialogTitle>
+            <AlertDialogDescription>
+              Choose an action to apply to all eligible bulk meters. Meters that have already been billed for the current month will be skipped.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-wrap">
+            <Button variant="secondary" onClick={() => handleBulkCycle(false)}>Mark All as Paid & Start New Cycles</Button>
+            <Button variant="destructive" onClick={() => handleBulkCycle(true)}>Carry All Balances & Start New Cycles</Button>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

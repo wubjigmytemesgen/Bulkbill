@@ -3,7 +3,7 @@
 "use client";
 
 import * as React from "react";
-import { MoreHorizontal, Edit, Trash2, User, CheckCircle, XCircle, Clock, Hourglass } from "lucide-react";
+import { MoreHorizontal, Edit, Trash2, User, CheckCircle, XCircle, Clock, Hourglass, Check } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -30,6 +30,7 @@ interface IndividualCustomerTableProps {
   data: IndividualCustomer[];
   onEdit: (customer: IndividualCustomer) => void;
   onDelete: (customer: IndividualCustomer) => void;
+  onApprove?: (customer: IndividualCustomer) => void;
   bulkMetersList?: { customerKeyNumber: string; name: string }[];
   branches: Branch[];
   currency?: string;
@@ -37,7 +38,7 @@ interface IndividualCustomerTableProps {
   canDelete: boolean;
 }
 
-export function IndividualCustomerTable({ data, onEdit, onDelete, bulkMetersList = [], branches, currency = "ETB", canEdit, canDelete }: IndividualCustomerTableProps) {
+export function IndividualCustomerTable({ data, onEdit, onDelete, onApprove, bulkMetersList = [], branches, currency = "ETB", canEdit, canDelete }: IndividualCustomerTableProps) {
 
   const getBulkMeterName = (key?: string) => {
     if (!key) return "-";
@@ -139,6 +140,13 @@ export function IndividualCustomerTable({ data, onEdit, onDelete, bulkMetersList
                           <DropdownMenuItem onClick={() => onEdit(customer)}>
                             <Edit className="mr-2 h-4 w-4" />
                             Edit
+                          </DropdownMenuItem>
+                        )}
+                        {/* Approve action shown when provided by parent (approvals page) */}
+                        {onApprove && (
+                          <DropdownMenuItem onClick={() => onApprove(customer)}>
+                            <Check className="mr-2 h-4 w-4" />
+                            Approve
                           </DropdownMenuItem>
                         )}
                         {canEdit && canDelete && <DropdownMenuSeparator />}

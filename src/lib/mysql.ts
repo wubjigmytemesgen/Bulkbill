@@ -27,6 +27,7 @@ async function getPool() {
 }
 
 export async function query(sql: string, params?: any[]) {
+  console.log('Executing query:', sql, params);
   const p = await getPool();
   try {
     const [rows] = await p.execute(sql, params || []);
@@ -37,7 +38,7 @@ export async function query(sql: string, params?: any[]) {
     } catch (logErr) {
       console.error('MySQL query error (failed to serialize)', logErr, sql, params, error);
     }
-    throw error;
+    throw new Error(`MySQL query failed: ${(error as Error).message}`);
   }
 }
 
