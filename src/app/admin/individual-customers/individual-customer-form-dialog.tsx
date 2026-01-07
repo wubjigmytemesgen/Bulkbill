@@ -30,12 +30,12 @@ import { individualCustomerStatuses } from "./individual-customer-types";
 import { getBulkMeters, subscribeToBulkMeters, initializeBulkMeters, getBranches, subscribeToBranches, initializeBranches as initializeAdminBranches } from "@/lib/data-store";
 import { DatePicker } from "@/components/ui/date-picker";
 import { format, parse, isValid } from "date-fns";
-import { customerTypes, sewerageConnections, paymentStatuses } from "@/lib/billing";
+import { customerTypes, sewerageConnections, paymentStatuses } from "@/lib/billing-calculations";
 import type { Branch } from "../branches/branch-types";
 
 const individualCustomerFormObjectSchema = baseIndividualCustomerDataSchema.extend({
-  status: z.enum(individualCustomerStatuses, { errorMap: () => ({ message: "Please select a valid status."}) }),
-  paymentStatus: z.enum(paymentStatuses, { errorMap: () => ({ message: "Please select a valid payment status."}) }),
+  status: z.enum(individualCustomerStatuses, { errorMap: () => ({ message: "Please select a valid status." }) }),
+  paymentStatus: z.enum(paymentStatuses, { errorMap: () => ({ message: "Please select a valid payment status." }) }),
   branchId: z.string().optional(),
 });
 
@@ -58,7 +58,7 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
   const [availableBranches, setAvailableBranches] = React.useState<Branch[]>([]);
   const [isLoadingBranches, setIsLoadingBranches] = React.useState(true);
   const [isLoadingBulkMeters, setIsLoadingBulkMeters] = React.useState(true);
-  
+
   const form = useForm<IndividualCustomerFormValues>({
     resolver: zodResolver(individualCustomerFormObjectSchema),
     defaultValues: {
@@ -89,12 +89,12 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
 
     setIsLoadingBranches(true);
     initializeAdminBranches().then(() => {
-        setAvailableBranches(getBranches());
-        setIsLoadingBranches(false);
+      setAvailableBranches(getBranches());
+      setIsLoadingBranches(false);
     });
     const unsubscribeAdminBranches = subscribeToBranches((updatedBranches) => {
-        setAvailableBranches(updatedBranches);
-        setIsLoadingBranches(false);
+      setAvailableBranches(updatedBranches);
+      setIsLoadingBranches(false);
     });
 
     setIsLoadingBulkMeters(true);
@@ -105,11 +105,11 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
         setIsLoadingBulkMeters(false);
       });
     } else {
-         setDynamicBulkMeters(propBulkMeters);
-         setIsLoadingBulkMeters(false);
+      setDynamicBulkMeters(propBulkMeters);
+      setIsLoadingBulkMeters(false);
     }
 
-    let unsubscribeBMs = () => {};
+    let unsubscribeBMs = () => { };
     if (!propBulkMeters) {
       unsubscribeBMs = subscribeToBulkMeters((updatedBulkMeters) => {
         setDynamicBulkMeters(updatedBulkMeters.map(bm => ({ customerKeyNumber: bm.customerKeyNumber, name: bm.name })));
@@ -162,7 +162,7 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
         subCity: staffBranchName || "",
         woreda: "",
         sewerageConnection: undefined,
-        assignedBulkMeterId: UNASSIGNED_BULK_METER_VALUE, 
+        assignedBulkMeterId: UNASSIGNED_BULK_METER_VALUE,
         branchId: undefined,
         status: "Active",
         paymentStatus: "Unpaid",
@@ -172,9 +172,9 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
 
   const handleSubmit = (data: IndividualCustomerFormValues) => {
     const submissionData = {
-        ...data,
-        assignedBulkMeterId: data.assignedBulkMeterId === UNASSIGNED_BULK_METER_VALUE ? undefined : data.assignedBulkMeterId,
-        branchId: data.branchId === BRANCH_UNASSIGNED_VALUE ? undefined : data.branchId,
+      ...data,
+      assignedBulkMeterId: data.assignedBulkMeterId === UNASSIGNED_BULK_METER_VALUE ? undefined : data.assignedBulkMeterId,
+      branchId: data.branchId === BRANCH_UNASSIGNED_VALUE ? undefined : data.branchId,
     };
     onSubmit(submissionData);
     onOpenChange(false);
@@ -192,7 +192,7 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
       form.setValue("branchId", undefined);
     }
   };
-  
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
@@ -204,97 +204,97 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {staffBranchName ? (
-                  <FormItem>
-                    <FormLabel>Branch</FormLabel>
-                    <FormControl>
-                      <Input value={staffBranchName} readOnly disabled className="bg-muted/50" />
-                    </FormControl>
-                  </FormItem>
-                ) : (
-                  <FormField
-                    control={form.control}
-                    name="branchId"
-                    render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Assign to Branch</FormLabel>
-                        <Select
-                            onValueChange={(value) => handleBranchChange(value)}
-                            value={field.value || BRANCH_UNASSIGNED_VALUE}
-                            disabled={isLoadingBranches || form.formState.isSubmitting}
-                        >
-                            <FormControl>
-                            <SelectTrigger>
-                                <SelectValue placeholder={isLoadingBranches ? "Loading branches..." : "Select a branch"} />
-                            </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                            <SelectItem value={BRANCH_UNASSIGNED_VALUE}>None</SelectItem>
-                            {availableBranches.map((branch) => (
-                                branch.id && String(branch.id).trim() !== "" ? (
-                                  <SelectItem key={String(branch.id)} value={String(branch.id)}>
-                                    {branch.name}
-                                  </SelectItem>
-                                ) : null
-                            ))}
-                            </SelectContent>
-                        </Select>
-                        <FormMessage />
-                        </FormItem>
-                    )}
-                  />
-                )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {staffBranchName ? (
+                <FormItem>
+                  <FormLabel>Branch</FormLabel>
+                  <FormControl>
+                    <Input value={staffBranchName} readOnly disabled className="bg-muted/50" />
+                  </FormControl>
+                </FormItem>
+              ) : (
                 <FormField
+                  control={form.control}
+                  name="branchId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Assign to Branch</FormLabel>
+                      <Select
+                        onValueChange={(value) => handleBranchChange(value)}
+                        value={field.value || BRANCH_UNASSIGNED_VALUE}
+                        disabled={isLoadingBranches || form.formState.isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={isLoadingBranches ? "Loading branches..." : "Select a branch"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value={BRANCH_UNASSIGNED_VALUE}>None</SelectItem>
+                          {availableBranches.map((branch) => (
+                            branch.id && String(branch.id).trim() !== "" ? (
+                              <SelectItem key={String(branch.id)} value={String(branch.id)}>
+                                {branch.name}
+                              </SelectItem>
+                            ) : null
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              <FormField
                 control={form.control}
                 name="assignedBulkMeterId"
                 render={({ field }) => (
-                    <FormItem>
+                  <FormItem>
                     <FormLabel>Assign to Bulk Meter</FormLabel>
                     <Select
-                        onValueChange={handleBulkMeterChange}
-                        value={field.value || UNASSIGNED_BULK_METER_VALUE}
-                        disabled={isLoadingBulkMeters}
+                      onValueChange={handleBulkMeterChange}
+                      value={field.value || UNASSIGNED_BULK_METER_VALUE}
+                      disabled={isLoadingBulkMeters}
                     >
-                        <FormControl>
+                      <FormControl>
                         <SelectTrigger>
-                            <SelectValue placeholder={isLoadingBulkMeters ? "Loading..." : "None"} />
+                          <SelectValue placeholder={isLoadingBulkMeters ? "Loading..." : "None"} />
                         </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
+                      </FormControl>
+                      <SelectContent>
                         <SelectItem value={UNASSIGNED_BULK_METER_VALUE}>None</SelectItem>
                         {dynamicBulkMeters.length === 0 && !isLoadingBulkMeters && (
-                            <SelectItem value="no-bms-available" disabled>
+                          <SelectItem value="no-bms-available" disabled>
                             No bulk meters available
-                            </SelectItem>
+                          </SelectItem>
                         )}
                         {dynamicBulkMeters.map((bm) => (
-                            bm.customerKeyNumber && String(bm.customerKeyNumber).trim() !== "" ? (
-                              <SelectItem key={String(bm.customerKeyNumber)} value={String(bm.customerKeyNumber)}>
-                                {bm.name}
-                              </SelectItem>
-                            ) : null
+                          bm.customerKeyNumber && String(bm.customerKeyNumber).trim() !== "" ? (
+                            <SelectItem key={String(bm.customerKeyNumber)} value={String(bm.customerKeyNumber)}>
+                              {bm.name}
+                            </SelectItem>
+                          ) : null
                         ))}
-                        </SelectContent>
+                      </SelectContent>
                     </Select>
                     <FormMessage />
-                    </FormItem>
+                  </FormItem>
                 )}
-                />
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="customerKeyNumber" render={({ field }) => (<FormItem><FormLabel>Cust. Key No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} disabled={!!defaultValues} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="contractNumber" render={({ field }) => (<FormItem><FormLabel>Contract No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-              
+
               <FormField control={form.control} name="customerType" render={({ field }) => (<FormItem><FormLabel>Customer Type <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger></FormControl><SelectContent>{customerTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="bookNumber" render={({ field }) => (<FormItem><FormLabel>Book No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="ordinal" render={({ field }) => (<FormItem><FormLabel>Ordinal <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value,10))} /></FormControl><FormMessage /></FormItem>)} />
-              
-              <FormField 
-                control={form.control} 
-                name="meterSize" 
+              <FormField control={form.control} name="ordinal" render={({ field }) => (<FormItem><FormLabel>Ordinal <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value, 10))} /></FormControl><FormMessage /></FormItem>)} />
+
+              <FormField
+                control={form.control}
+                name="meterSize"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Meter Size (inch) <span className="text-destructive">*</span></FormLabel>
@@ -316,78 +316,78 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
                     </Select>
                     <FormMessage />
                   </FormItem>
-                )} 
+                )}
               />
               <FormField control={form.control} name="meterNumber" render={({ field }) => (<FormItem><FormLabel>Meter No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="previousReading" render={({ field }) => (<FormItem><FormLabel>Previous Reading <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />
-              
+
               <FormField control={form.control} name="currentReading" render={({ field }) => (<FormItem><FormLabel>Current Reading <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="month" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Reading Month <span className="text-destructive">*</span></FormLabel><DatePicker date={field.value && isValid(parse(field.value, 'yyyy-MM', new Date())) ? parse(field.value, 'yyyy-MM', new Date()) : undefined} setDate={(date) => field.onChange(date ? format(date, "yyyy-MM") : "")} /><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="specificArea" render={({ field }) => (<FormItem><FormLabel>Specific Area <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-              
+
               <FormField
-                  control={form.control}
-                  name="subCity"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Sub-City <span className="text-destructive">*</span></FormLabel>
-                       <Select 
-                          onValueChange={field.onChange} 
-                          value={field.value} 
-                          disabled={form.formState.isSubmitting}
-                        >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a Sub-City" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {subCityOptions.map(option => (
-                            option !== undefined && String(option).trim() !== "" ? (
-                              <SelectItem key={String(option)} value={String(option)}>
-                                {option}
-                              </SelectItem>
-                            ) : null
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                 <FormField
-                  control={form.control}
-                  name="woreda"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Woreda <span className="text-destructive">*</span></FormLabel>
-                       <Select onValueChange={field.onChange} value={field.value} disabled={form.formState.isSubmitting}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a Woreda" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {woredaOptions.map(option => (
-                            option !== undefined && String(option).trim() !== "" ? (
-                              <SelectItem key={String(option)} value={String(option)}>
-                                {option}
-                              </SelectItem>
-                            ) : null
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                control={form.control}
+                name="subCity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sub-City <span className="text-destructive">*</span></FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      disabled={form.formState.isSubmitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a Sub-City" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {subCityOptions.map(option => (
+                          option !== undefined && String(option).trim() !== "" ? (
+                            <SelectItem key={String(option)} value={String(option)}>
+                              {option}
+                            </SelectItem>
+                          ) : null
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="woreda"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Woreda <span className="text-destructive">*</span></FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={form.formState.isSubmitting}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a Woreda" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {woredaOptions.map(option => (
+                          option !== undefined && String(option).trim() !== "" ? (
+                            <SelectItem key={String(option)} value={String(option)}>
+                              {option}
+                            </SelectItem>
+                          ) : null
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <FormField control={form.control} name="sewerageConnection" render={({ field }) => (<FormItem><FormLabel>Sewerage Conn. <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select connection" /></SelectTrigger></FormControl><SelectContent>{sewerageConnections.map(conn => (conn !== undefined && String(conn).trim() !== "" ? <SelectItem key={String(conn)} value={String(conn)}>{conn}</SelectItem> : null))}</SelectContent></Select><FormMessage /></FormItem>)} />
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField control={form.control} name="status" render={({ field }) => (<FormItem><FormLabel>Customer Status <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select status"/></SelectTrigger></FormControl><SelectContent>{individualCustomerStatuses.map(status => (status !== undefined && String(status).trim() !== "" ? <SelectItem key={String(status)} value={String(status)}>{status}</SelectItem> : null))}</SelectContent></Select><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="paymentStatus" render={({ field }) => (<FormItem><FormLabel>Payment Status <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select payment status"/></SelectTrigger></FormControl><SelectContent>{paymentStatuses.map(status => (status !== undefined && String(status).trim() !== "" ? <SelectItem key={String(status)} value={String(status)}>{status}</SelectItem> : null))}</SelectContent></Select><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="status" render={({ field }) => (<FormItem><FormLabel>Customer Status <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger></FormControl><SelectContent>{individualCustomerStatuses.map(status => (status !== undefined && String(status).trim() !== "" ? <SelectItem key={String(status)} value={String(status)}>{status}</SelectItem> : null))}</SelectContent></Select><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="paymentStatus" render={({ field }) => (<FormItem><FormLabel>Payment Status <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select payment status" /></SelectTrigger></FormControl><SelectContent>{paymentStatuses.map(status => (status !== undefined && String(status).trim() !== "" ? <SelectItem key={String(status)} value={String(status)}>{status}</SelectItem> : null))}</SelectContent></Select><FormMessage /></FormItem>)} />
             </div>
 
             <DialogFooter>

@@ -8,12 +8,12 @@ import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { BulkMeter } from "@/app/admin/bulk-meters/bulk-meter-types";
-import { BulkMeterFormDialog, type BulkMeterFormValues } from "@/app/admin/bulk-meters/bulk-meter-form-dialog"; 
-import { BulkMeterTable } from "./bulk-meter-table"; 
-import { 
-  getBulkMeters, 
-  addBulkMeter as addBulkMeterToStore, 
-  updateBulkMeter as updateBulkMeterInStore, 
+import { BulkMeterFormDialog, type BulkMeterFormValues } from "@/app/admin/bulk-meters/bulk-meter-form-dialog";
+import { BulkMeterTable } from "./bulk-meter-table";
+import {
+  getBulkMeters,
+  addBulkMeter as addBulkMeterToStore,
+  updateBulkMeter as updateBulkMeterInStore,
   deleteBulkMeter as deleteBulkMeterFromStore,
   subscribeToBulkMeters,
   initializeBulkMeters,
@@ -31,14 +31,15 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useCurrentUser } from '@/hooks/use-current-user';
 import type { StaffMember } from "@/app/admin/staff-management/staff-types";
 import { format, parseISO, lastDayOfMonth } from "date-fns";
-import { calculateBill, type CustomerType, type SewerageConnection, type PaymentStatus, type BillCalculationResult } from "@/lib/billing";
+import { calculateBillAction } from "@/lib/actions";
+import { type CustomerType, type SewerageConnection, type PaymentStatus, type BillCalculationResult } from "@/lib/billing-calculations";
 
 export default function StaffBulkMetersPage() {
   const { hasPermission } = usePermissions();
   const { toast } = useToast();
   const [authStatus, setAuthStatus] = React.useState<'loading' | 'unauthorized' | 'authorized'>('loading');
   const { currentUser, isStaff, isStaffManagement, branchId, branchName } = useCurrentUser();
-  
+
   const [allBulkMeters, setAllBulkMeters] = React.useState<BulkMeter[]>([]);
   const [allBranches, setAllBranches] = React.useState<Branch[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -74,21 +75,21 @@ export default function StaffBulkMetersPage() {
     setIsLoading(true);
 
     const initializeAndSubscribe = async () => {
-        try {
-          await Promise.all([initializeBranches(), initializeBulkMeters()]);
-          if (isMounted) {
-            setAllBranches(getBranches());
-            setAllBulkMeters(getBulkMeters());
-          }
-        } catch (err) {
-            console.error("Failed to initialize data:", err);
-        } finally {
-            if (isMounted) setIsLoading(false);
+      try {
+        await Promise.all([initializeBranches(), initializeBulkMeters()]);
+        if (isMounted) {
+          setAllBranches(getBranches());
+          setAllBulkMeters(getBulkMeters());
         }
+      } catch (err) {
+        console.error("Failed to initialize data:", err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
     };
-    
+
     initializeAndSubscribe();
-    
+
     const unSubBranches = subscribeToBranches((data) => isMounted && setAllBranches(data));
     const unSubBulkMeters = subscribeToBulkMeters((data) => isMounted && setAllBulkMeters(data));
 
@@ -119,7 +120,7 @@ export default function StaffBulkMetersPage() {
 
 
   const searchedBulkMeters = React.useMemo(() => {
-     if (!searchTerm) {
+    if (!searchTerm) {
       return branchFilteredBulkMeters;
     }
     return branchFilteredBulkMeters.filter(bm =>
@@ -129,7 +130,7 @@ export default function StaffBulkMetersPage() {
       (bm.woreda && bm.woreda.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   }, [searchTerm, branchFilteredBulkMeters]);
-  
+
   const paginatedBulkMeters = searchedBulkMeters.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
@@ -160,11 +161,11 @@ export default function StaffBulkMetersPage() {
   };
 
   const handleSubmitBulkMeter = async (data: BulkMeterFormValues) => {
-     if (!currentUser) {
+    if (!currentUser) {
       toast({ variant: 'destructive', title: 'Error', description: 'User information not found.' });
       return;
     }
-    
+
     if (selectedBulkMeter) {
       const result = await updateBulkMeterInStore(selectedBulkMeter.customerKeyNumber, data);
       if (result.success) {
@@ -173,7 +174,7 @@ export default function StaffBulkMetersPage() {
         toast({ variant: "destructive", title: "Update Failed", description: result.message });
       }
     } else {
-  const result = await addBulkMeterToStore(data, currentUser as StaffMember); 
+      const result = await addBulkMeterToStore(data, currentUser as StaffMember);
       if (result.success) {
         toast({ title: "Bulk Meter Added", description: `${data.name} has been added and is pending approval.` });
       } else {
@@ -189,7 +190,7 @@ export default function StaffBulkMetersPage() {
     toast({ title: "Processing Bulk Cycle", description: "This may take a moment..." });
 
     const allBills = getBills();
-    const metersToProcess = branchFilteredBulkMeters.filter(bm => 
+    const metersToProcess = branchFilteredBulkMeters.filter(bm =>
       !allBills.some(bill => bill.bulkMeterId === bm.customerKeyNumber && bill.monthYear === bm.month)
     );
 
@@ -224,11 +225,16 @@ export default function StaffBulkMetersPage() {
 
     const chargeGroup = bulkMeter.chargeGroup as CustomerType || 'Non-domestic';
     const sewerageConn = bulkMeter.sewerageConnection || 'No';
-    const { totalBill: billForDifferenceUsage, ...differenceBillBreakdownForCycle } = await calculateBill(differenceUsageForCycle, chargeGroup, sewerageConn, bulkMeter.meterSize, bulkMeter.month!);
-    
+    const { data: billResult } = await calculateBillAction(differenceUsageForCycle, chargeGroup, sewerageConn, bulkMeter.meterSize, bulkMeter.month!);
+
+    if (!billResult) {
+      return { success: false, message: "Failed to calculate bill for cycle end." };
+    }
+    const { totalBill: billForDifferenceUsage, ...differenceBillBreakdownForCycle } = billResult;
+
     const balanceFromPreviousPeriods = bulkMeter.outStandingbill || 0;
     const totalPayableForCycle = billForDifferenceUsage + balanceFromPreviousPeriods;
-    
+
     const billDate = new Date();
     const periodEndDate = lastDayOfMonth(parseISO(`${bulkMeter.month}-01`));
     const dueDateObject = new Date(periodEndDate);
@@ -257,12 +263,12 @@ export default function StaffBulkMetersPage() {
     }
 
     const newOutstandingBalance = carryBalance ? totalPayableForCycle : 0;
-    
-  const updatePayload: Partial<Omit<BulkMeter, 'customerKeyNumber'>> = {
-    previousReading: bulkMeter.currentReading,
-    outStandingbill: newOutstandingBalance,
-    paymentStatus: carryBalance ? ('Unpaid' as const) : ('Paid' as const),
-  };
+
+    const updatePayload: Partial<Omit<BulkMeter, 'customerKeyNumber'>> = {
+      previousReading: bulkMeter.currentReading,
+      outStandingbill: newOutstandingBalance,
+      paymentStatus: carryBalance ? ('Unpaid' as const) : ('Paid' as const),
+    };
 
     const updateResult = await updateBulkMeterInStore(bulkMeter.customerKeyNumber, updatePayload);
     if (updateResult.success && updateResult.data) {
@@ -272,7 +278,7 @@ export default function StaffBulkMetersPage() {
       return { success: false, message: "Could not update the meter. The new bill has been rolled back." };
     }
   };
-  
+
   const renderContent = () => {
     if (isLoading) {
       return (
@@ -311,9 +317,9 @@ export default function StaffBulkMetersPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-4">
-  <h1 className="text-2xl md:text-3xl font-bold">Bulk Meters {branchName ? `(${branchName})` : ''}</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Bulk Meters {branchName ? `(${branchName})` : ''}</h1>
         <div className="flex gap-2 w-full md:w-auto">
-           <div className="relative flex-grow md:flex-grow-0">
+          <div className="relative flex-grow md:flex-grow-0">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
@@ -334,7 +340,7 @@ export default function StaffBulkMetersPage() {
             <RefreshCcw className="mr-2 h-4 w-4" />
             Bulk Cycle Actions
           </Button>
-            {hasPermission('bulk_meters_create') && (
+          {hasPermission('bulk_meters_create') && (
             <Button onClick={handleAddBulkMeter} disabled={authStatus !== 'authorized'}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Bulk Meter
             </Button>
@@ -343,14 +349,14 @@ export default function StaffBulkMetersPage() {
       </div>
 
       <Card className="shadow-lg">
-          <CardHeader>
+        <CardHeader>
           <CardTitle>Bulk Meter List for {branchName || "Your Area"}</CardTitle>
           <CardDescription>View, edit, and manage bulk meter information for your branch.</CardDescription>
         </CardHeader>
         <CardContent>
           {renderContent()}
         </CardContent>
-         {searchedBulkMeters.length > 0 && authStatus === 'authorized' && (
+        {searchedBulkMeters.length > 0 && authStatus === 'authorized' && (
           <TablePagination
             count={searchedBulkMeters.length}
             page={page}

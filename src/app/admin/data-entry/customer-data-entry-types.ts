@@ -1,7 +1,7 @@
 
 
 import * as z from "zod";
-import { customerTypes, sewerageConnections } from "@/lib/billing";
+import { customerTypes, sewerageConnections } from "@/lib/billing-calculations";
 
 export const meterSizeOptions = [
   { value: '0.5', label: '1/2"' },
@@ -18,7 +18,7 @@ export const meterSizeOptions = [
 ];
 
 export const subCityOptions = [
-  "Addis Ketema", "Akaky Kaliti", "Arada", "Bole", "Gullele", 
+  "Addis Ketema", "Akaky Kaliti", "Arada", "Bole", "Gullele",
   "Kirkos", "Kolfe Keranio", "Lideta", "Nifas Silk-Lafto", "Yeka", "Lemi Kura"
 ];
 
@@ -28,18 +28,18 @@ export const baseIndividualCustomerDataSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   customerKeyNumber: z.string().min(1, { message: "Customer Key Number is required." }),
   contractNumber: z.string().min(1, { message: "Contract Number is required." }),
-  customerType: z.enum(customerTypes, { errorMap: () => ({ message: "Please select a valid customer type."}) }),
+  customerType: z.enum(customerTypes, { errorMap: () => ({ message: "Please select a valid customer type." }) }),
   bookNumber: z.string().min(1, { message: "Book Number is required." }),
   ordinal: z.coerce.number().int().min(1, { message: "Ordinal must be a positive integer." }),
   meterSize: z.coerce.number().positive({ message: "Meter Size must be a positive number (inch)." }),
   meterNumber: z.string().min(1, { message: "Meter Number is required." }),
   previousReading: z.coerce.number().min(0, { message: "Previous Reading cannot be negative." }),
   currentReading: z.coerce.number().min(0, { message: "Current Reading cannot be negative." }),
-  month: z.string().regex(/^\d{4}-\d{2}$/, { message: "Month must be in YYYY-MM format." }), 
+  month: z.string().regex(/^\d{4}-\d{2}$/, { message: "Month must be in YYYY-MM format." }),
   specificArea: z.string().min(1, { message: "Specific Area is required." }),
   subCity: z.string().min(1, { message: "Sub-City is required." }),
   woreda: z.string().min(1, { message: "Woreda is required." }),
-  sewerageConnection: z.enum(sewerageConnections, { errorMap: () => ({ message: "Please select sewerage connection status."}) }),
+  sewerageConnection: z.enum(sewerageConnections, { errorMap: () => ({ message: "Please select sewerage connection status." }) }),
   assignedBulkMeterId: z.string().optional().describe("The ID of the bulk meter this individual customer is assigned to."),
   branchId: z.string().optional().describe("The ID of the branch this customer belongs to."), // New field
 });
@@ -63,8 +63,9 @@ export const baseBulkMeterDataSchema = z.object({
   specificArea: z.string().min(1, { message: "Specific Area is required." }),
   subCity: z.string().min(1, { message: "Sub-City is required." }),
   woreda: z.string().min(1, { message: "Woreda is required." }),
+  phoneNumber: z.string().optional(),
   branchId: z.string().optional().describe("The ID of the branch this bulk meter belongs to."),
-  chargeGroup: z.string({ required_error: "Charge group is required."}),
+  chargeGroup: z.string({ required_error: "Charge group is required." }),
   sewerageConnection: z.enum(sewerageConnections).default("No"),
   xCoordinate: z.coerce.number().optional(),
   yCoordinate: z.coerce.number().optional(),

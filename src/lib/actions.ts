@@ -58,6 +58,8 @@ import {
   dbGetAllKnowledgeBaseArticles,
 } from './db-queries';
 
+import { calculateBill, type CustomerType, type SewerageConnection } from './billing';
+
 import type { Database } from '@/types/supabase';
 
 // Helper types to extract Row, Insert, and Update types from the database definition
@@ -117,10 +119,10 @@ const wrap = async <T>(fn: () => Promise<T>) => {
     return { data, error: null } as any;
   } catch (e) {
     // Ensure the full error is serialized, not just a generic object
-    const errorObject = e instanceof Error 
-      ? { name: e.name, message: e.message, stack: e.stack } 
-      : typeof e === 'object' && e !== null 
-        ? e 
+    const errorObject = e instanceof Error
+      ? { name: e.name, message: e.message, stack: e.stack }
+      : typeof e === 'object' && e !== null
+        ? e
         : { message: String(e) };
     return { data: null, error: errorObject } as any;
   }
@@ -200,3 +202,25 @@ export async function getAllKnowledgeBaseArticlesAction() { return await wrap(()
 export async function createKnowledgeBaseArticleAction(article: KnowledgeBaseArticleInsert) { return await wrap(() => dbCreateKnowledgeBaseArticle(article)); }
 export async function updateKnowledgeBaseArticleAction(id: number, article: KnowledgeBaseArticleUpdate) { return await wrap(() => dbUpdateKnowledgeBaseArticle(id, article)); }
 export async function deleteKnowledgeBaseArticleAction(id: number) { return await wrap(() => dbDeleteKnowledgeBaseArticle(id)); }
+
+export async function calculateBillAction(
+  consumption: number,
+  customerType: CustomerType,
+  sewerageConnection: SewerageConnection,
+  meterSize: string | number,
+  billingMonth: string,
+  sewerageUsageM3?: number,
+  baseWaterChargeUsageM3?: number
+) {
+  const size = typeof meterSize === 'string' ? parseFloat(meterSize) : meterSize;
+  return await wrap(() => calculateBill(consumption, customerType, sewerageConnection, size || 0, billingMonth, sewerageUsageM3, baseWaterChargeUsageM3));
+}
+
+import { dbLogSecurityEvent } from './db-queries';
+
+export async function logSecurityEventAction(event: string, staff_email?: string, branch_name?: string, ipAddress?: string) {
+  return await wrap(async () => {
+    await dbLogSecurityEvent(event, staff_email, branch_name, ipAddress);
+    return true;
+  });
+}

@@ -146,7 +146,7 @@ export function AppShell({ user, userRole, sidebar, children }: { user: UserProf
   
   return (
     <SidebarProvider defaultOpen>
-  <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+  <Sidebar variant="sidebar" collapsible="icon" className={cn("border-r border-sidebar-border bg-sidebar text-sidebar-foreground no-print")}>
         <SidebarHeader className="p-2">
         </SidebarHeader>
         <SidebarContent>
@@ -159,11 +159,13 @@ export function AppShell({ user, userRole, sidebar, children }: { user: UserProf
         <main className="flex-1 p-4 sm:p-6 space-y-6 bg-background">
           {children}
         </main>
-        <footer className="text-xs text-center text-muted-foreground p-4">
+        <footer className="text-xs text-center text-muted-foreground p-4 no-print">
           Design and Developed by Daniel Temesgen
           &copy; {currentYear} {appName}. All rights reserved.
         </footer>
-        <ChatbotWidget />
+        <div className="no-print">
+          <ChatbotWidget />
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

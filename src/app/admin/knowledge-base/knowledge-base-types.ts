@@ -6,6 +6,7 @@ export interface KnowledgeBaseArticle {
   content: string;
   category?: string;
   keywords?: string[];
+  pdf_url?: string;
 }
 
 export type KnowledgeBaseArticleInsert = Omit<KnowledgeBaseArticle, 'id' | 'created_at'>;

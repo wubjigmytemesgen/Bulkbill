@@ -27,7 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { baseBulkMeterDataSchema, meterSizeOptions, subCityOptions, woredaOptions } from "@/app/admin/data-entry/customer-data-entry-types";
 import type { BulkMeter } from "./bulk-meter-types";
 import { bulkMeterStatuses } from "./bulk-meter-types";
-import { paymentStatuses, customerTypes, sewerageConnections } from "@/lib/billing"; 
+import { paymentStatuses, customerTypes, sewerageConnections } from "@/lib/billing-calculations";
 import { DatePicker } from "@/components/ui/date-picker";
 import { format, parse, isValid } from "date-fns";
 import { getBranches, subscribeToBranches, initializeBranches as initializeAdminBranches } from "@/lib/data-store";
@@ -36,21 +36,21 @@ import type { Branch } from "../branches/branch-types";
 const BRANCH_UNASSIGNED_VALUE = "_SELECT_BRANCH_BULK_METER_DIALOG_";
 
 const bulkMeterFormObjectSchema = baseBulkMeterDataSchema.extend({
-  status: z.enum(bulkMeterStatuses, { errorMap: () => ({ message: "Please select a valid status."}) }),
-  paymentStatus: z.enum(paymentStatuses, { errorMap: () => ({ message: "Please select a valid payment status."}) }),
+  status: z.enum(bulkMeterStatuses, { errorMap: () => ({ message: "Please select a valid status." }) }),
+  paymentStatus: z.enum(paymentStatuses, { errorMap: () => ({ message: "Please select a valid payment status." }) }),
   branchId: z.string().optional(), // Add branchId to schema
 });
 
 const bulkMeterFormSchema = bulkMeterFormObjectSchema.refine(data => {
-    if (data.currentReading === undefined || data.previousReading === undefined) return true;
-    return data.currentReading >= data.previousReading;
+  if (data.currentReading === undefined || data.previousReading === undefined) return true;
+  return data.currentReading >= data.previousReading;
 }, {
   message: "Current Reading must be greater than or equal to Previous Reading.",
   path: ["currentReading"],
 });
 
 
-export type BulkMeterFormValues = z.infer<typeof bulkMeterFormSchema>; 
+export type BulkMeterFormValues = z.infer<typeof bulkMeterFormSchema>;
 
 interface BulkMeterFormDialogProps {
   open: boolean;
@@ -67,16 +67,16 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
   React.useEffect(() => {
     setIsLoadingBranches(true);
     initializeAdminBranches().then(() => {
-        setAvailableBranches(getBranches());
-        setIsLoadingBranches(false);
+      setAvailableBranches(getBranches());
+      setIsLoadingBranches(false);
     });
     const unsubscribeBranches = subscribeToBranches((updatedBranches) => {
-        setAvailableBranches(updatedBranches);
-        setIsLoadingBranches(false);
+      setAvailableBranches(updatedBranches);
+      setIsLoadingBranches(false);
     });
     return () => unsubscribeBranches();
   }, []);
-  
+
   const form = useForm<BulkMeterFormValues>({
     resolver: zodResolver(bulkMeterFormSchema),
     defaultValues: {
@@ -87,15 +87,16 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
       meterNumber: "",
       previousReading: undefined,
       currentReading: undefined,
-      month: "", 
+      month: "",
       specificArea: "",
       subCity: "",
       woreda: "",
+      phoneNumber: "",
       branchId: undefined,
       chargeGroup: "Non-domestic",
       sewerageConnection: "No",
-      status: "Active", 
-      paymentStatus: "Unpaid", 
+      status: "Active",
+      paymentStatus: "Unpaid",
       xCoordinate: undefined,
       yCoordinate: undefined,
     },
@@ -105,6 +106,7 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
     if (defaultValues) {
       form.reset({
         ...defaultValues,
+        phoneNumber: (defaultValues as any).phoneNumber || "",
         meterSize: defaultValues.meterSize ?? undefined,
         previousReading: defaultValues.previousReading ?? undefined,
         currentReading: defaultValues.currentReading ?? undefined,
@@ -129,6 +131,7 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
         specificArea: "",
         subCity: staffBranchName || "", // Use staff branch name for subCity
         woreda: "",
+        phoneNumber: "",
         branchId: undefined,
         chargeGroup: "Non-domestic",
         sewerageConnection: "No",
@@ -141,14 +144,14 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
   }, [defaultValues, form, open, staffBranchName]);
 
   const handleSubmit = (data: BulkMeterFormValues) => {
-     const submissionData = {
+    const submissionData = {
       ...data,
       branchId: data.branchId === BRANCH_UNASSIGNED_VALUE ? undefined : data.branchId,
     };
-    onSubmit(submissionData); 
-    onOpenChange(false); 
+    onSubmit(submissionData);
+    onOpenChange(false);
   };
-  
+
   const handleBranchChange = (branchIdValue: string) => {
     const selectedBranch = availableBranches.find(b => b.id === branchIdValue);
     if (selectedBranch) {
@@ -249,14 +252,14 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                   </FormItem>
                 )}
               />
-               <FormField
+              <FormField
                 control={form.control}
                 name="meterSize"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Meter Size (inch) <span className="text-destructive">*</span></FormLabel>
-                    <Select 
-                      onValueChange={field.onChange} 
+                    <Select
+                      onValueChange={field.onChange}
                       defaultValue={field.value ? String(field.value) : undefined}
                       value={field.value ? String(field.value) : undefined}
                     >
@@ -299,11 +302,11 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                   <FormItem>
                     <FormLabel>Initial Previous Reading <span className="text-destructive">*</span></FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        step="0.01" 
-                        {...field} 
-                        value={field.value ?? ""} 
+                      <Input
+                        type="number"
+                        step="0.01"
+                        {...field}
+                        value={field.value ?? ""}
                         onChange={e => {
                           const val = e.target.value;
                           field.onChange(val === "" ? undefined : parseFloat(val));
@@ -321,11 +324,11 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                   <FormItem>
                     <FormLabel>Initial Current Reading <span className="text-destructive">*</span></FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        step="0.01" 
-                        {...field} 
-                        value={field.value ?? ""} 
+                      <Input
+                        type="number"
+                        step="0.01"
+                        {...field}
+                        value={field.value ?? ""}
                         onChange={e => {
                           const val = e.target.value;
                           field.onChange(val === "" ? undefined : parseFloat(val));
@@ -342,12 +345,12 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Initial Reading Month <span className="text-destructive">*</span></FormLabel>
-                     <DatePicker
-                        date={field.value && isValid(parse(field.value, 'yyyy-MM', new Date())) ? parse(field.value, 'yyyy-MM', new Date()) : undefined}
-                        setDate={(selectedDate) => {
-                          field.onChange(selectedDate ? format(selectedDate, "yyyy-MM") : "");
-                        }}
-                      />
+                    <DatePicker
+                      date={field.value && isValid(parse(field.value, 'yyyy-MM', new Date())) ? parse(field.value, 'yyyy-MM', new Date()) : undefined}
+                      setDate={(selectedDate) => {
+                        field.onChange(selectedDate ? format(selectedDate, "yyyy-MM") : "");
+                      }}
+                    />
                     <FormMessage />
                   </FormItem>
                 )}
@@ -369,48 +372,61 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                 control={form.control}
                 name="subCity"
                 render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Sub-City <span className="text-destructive">*</span></FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select a Sub-City" />
-                                </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                {subCityOptions.map(option => (
-                  option !== undefined && String(option).trim() !== "" ? (
-                    <SelectItem key={String(option)} value={String(option)}>{option}</SelectItem>
-                  ) : null
-                ))}
-                            </SelectContent>
-                        </Select>
-                        <FormMessage />
-                    </FormItem>
+                  <FormItem>
+                    <FormLabel>Sub-City <span className="text-destructive">*</span></FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a Sub-City" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {subCityOptions.map(option => (
+                          option !== undefined && String(option).trim() !== "" ? (
+                            <SelectItem key={String(option)} value={String(option)}>{option}</SelectItem>
+                          ) : null
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
                 )}
               />
               <FormField
                 control={form.control}
                 name="woreda"
                 render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Woreda <span className="text-destructive">*</span></FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select a Woreda" />
-                                </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                {woredaOptions.map(option => (
-                  option !== undefined && String(option).trim() !== "" ? (
-                    <SelectItem key={String(option)} value={String(option)}>{option}</SelectItem>
-                  ) : null
-                ))}
-                            </SelectContent>
-                        </Select>
-                        <FormMessage />
-                    </FormItem>
+                  <FormItem>
+                    <FormLabel>Woreda <span className="text-destructive">*</span></FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a Woreda" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {woredaOptions.map(option => (
+                          option !== undefined && String(option).trim() !== "" ? (
+                            <SelectItem key={String(option)} value={String(option)}>{option}</SelectItem>
+                          ) : null
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phoneNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                      <Input {...field} value={field.value ?? ""} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
                 )}
               />
               <FormField
@@ -420,10 +436,10 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                   <FormItem>
                     <FormLabel>X Coordinate (Optional)</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        step="any" 
-                        {...field} 
+                      <Input
+                        type="number"
+                        step="any"
+                        {...field}
                         value={field.value ?? ""}
                         onChange={e => {
                           const val = e.target.value;
@@ -442,10 +458,10 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                   <FormItem>
                     <FormLabel>Y Coordinate (Optional)</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        step="any" 
-                        {...field} 
+                      <Input
+                        type="number"
+                        step="any"
+                        {...field}
                         value={field.value ?? ""}
                         onChange={e => {
                           const val = e.target.value;
@@ -533,7 +549,7 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                   </FormItem>
                 )}
               />
-               <FormField
+              <FormField
                 control={form.control}
                 name="paymentStatus"
                 render={({ field }) => (

@@ -1,19 +1,25 @@
 "use client";
 
 import * as React from "react";
-import { PlusCircle, Gauge, Search, RefreshCcw } from "lucide-react";
+import { PlusCircle, Gauge, Search, RefreshCcw, MapIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { BulkMeter } from "./bulk-meter-types";
-import { BulkMeterFormDialog, type BulkMeterFormValues } from "./bulk-meter-form-dialog"; 
+import { BulkMeterFormDialog, type BulkMeterFormValues } from "./bulk-meter-form-dialog";
 import { BulkMeterTable } from "./bulk-meter-table";
-import { 
-  getBulkMeters, 
-  addBulkMeter as addBulkMeterToStore, 
-  updateBulkMeter as updateBulkMeterInStore, 
+import dynamic from 'next/dynamic';
+
+const BulkMeterMap = dynamic(() => import('./bulk-meter-map').then(mod => mod.BulkMeterMap), {
+  ssr: false,
+  loading: () => <p>Loading map...</p>
+});
+import {
+  getBulkMeters,
+  addBulkMeter as addBulkMeterToStore,
+  updateBulkMeter as updateBulkMeterInStore,
   deleteBulkMeter as deleteBulkMeterFromStore,
   subscribeToBulkMeters,
   initializeBulkMeters,
@@ -22,15 +28,15 @@ import {
   subscribeToBranches,
   getBills,
   addBill,
-  updateExistingBill,
   getCustomers
 } from "@/lib/data-store";
+import { calculateBillAction } from "@/lib/actions";
 import type { Branch } from "../branches/branch-types";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { StaffMember } from "../staff-management/staff-types";
 import { format, parseISO, lastDayOfMonth } from "date-fns";
-import { calculateBill, type CustomerType, type SewerageConnection, type PaymentStatus, type BillCalculationResult } from "@/lib/billing";
+import { type CustomerType, type SewerageConnection } from "@/lib/billing-calculations";
 
 export default function BulkMetersPage() {
   const { hasPermission } = usePermissions();
@@ -45,6 +51,7 @@ export default function BulkMetersPage() {
   const [selectedBulkMeter, setSelectedBulkMeter] = React.useState<BulkMeter | null>(null);
   const [bulkMeterToDelete, setBulkMeterToDelete] = React.useState<BulkMeter | null>(null);
   const [isBulkCycleDialogOpen, setIsBulkCycleDialogOpen] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<'table' | 'map'>('table');
 
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
@@ -63,9 +70,9 @@ export default function BulkMetersPage() {
       setBranches(getBranches());
       setIsLoading(false);
     });
-    
+
     const unsubscribeBM = subscribeToBulkMeters((updatedBulkMeters) => {
-       setBulkMeters(updatedBulkMeters);
+      setBulkMeters(updatedBulkMeters);
     });
     const unsubscribeBranches = subscribeToBranches((updatedBranches) => {
       setBranches(updatedBranches);
@@ -106,7 +113,7 @@ export default function BulkMetersPage() {
       toast({ variant: 'destructive', title: 'Error', description: 'User information not found.' });
       return;
     }
-    
+
     if (selectedBulkMeter) {
       if (!hasPermission('bulk_meters_update')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to update bulk meters.' }); return; }
       const result = await updateBulkMeterInStore(selectedBulkMeter.customerKeyNumber, data);
@@ -117,7 +124,7 @@ export default function BulkMetersPage() {
       }
     } else {
       if (!hasPermission('bulk_meters_create')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to create bulk meters.' }); return; }
-      const result = await addBulkMeterToStore(data, currentUser); 
+      const result = await addBulkMeterToStore(data, currentUser);
       if (result.success) {
         toast({ title: "Bulk Meter Added", description: `${data.name} has been added and is pending approval.` });
       } else {
@@ -133,7 +140,7 @@ export default function BulkMetersPage() {
     toast({ title: "Processing Bulk Cycle", description: "This may take a moment..." });
 
     const allBills = getBills();
-    const metersToProcess = bulkMeters.filter(bm => 
+    const metersToProcess = bulkMeters.filter(bm =>
       !allBills.some(bill => bill.bulkMeterId === bm.customerKeyNumber && bill.monthYear === bm.month)
     );
 
@@ -172,11 +179,24 @@ export default function BulkMetersPage() {
 
     const chargeGroup = bulkMeter.chargeGroup as CustomerType || 'Non-domestic';
     const sewerageConn = bulkMeter.sewerageConnection || 'No';
-    const { totalBill: billForDifferenceUsage, ...differenceBillBreakdownForCycle } = await calculateBill(differenceUsageForCycle, chargeGroup, sewerageConn, bulkMeter.meterSize, bulkMeter.month!);
-    
+
+    const { data: billResult, error: billError } = await calculateBillAction(
+      differenceUsageForCycle,
+      chargeGroup,
+      sewerageConn,
+      bulkMeter.meterSize,
+      bulkMeter.month!
+    );
+
+    if (billError || !billResult) {
+      return { success: false, message: `Bill calculation failed: ${billError?.message || 'Unknown error'}` };
+    }
+
+    const { totalBill: billForDifferenceUsage, ...differenceBillBreakdownForCycle } = billResult;
+
     const balanceFromPreviousPeriods = bulkMeter.outStandingbill || 0;
     const totalPayableForCycle = billForDifferenceUsage + balanceFromPreviousPeriods;
-    
+
     const billDate = new Date();
     const periodEndDate = lastDayOfMonth(parseISO(`${bulkMeter.month}-01`));
     const dueDateObject = new Date(periodEndDate);
@@ -205,19 +225,34 @@ export default function BulkMetersPage() {
     }
 
     const newOutstandingBalance = carryBalance ? totalPayableForCycle : 0;
-    
-    const updatePayload = {
-        previousReading: bulkMeter.currentReading,
-        outStandingbill: newOutstandingBalance,
-        paymentStatus: carryBalance ? 'Unpaid' : 'Paid',
+
+    const safePreviousReading = typeof bulkMeter.currentReading === 'number' ? bulkMeter.currentReading : 0;
+    const updatePayload: Partial<Omit<BulkMeter, 'customerKeyNumber'>> = {
+      previousReading: safePreviousReading,
+      outStandingbill: Number(newOutstandingBalance) || 0,
+      paymentStatus: carryBalance ? 'Unpaid' as any : 'Paid' as any,
     };
 
-    const updateResult = await updateBulkMeterInStore(bulkMeter.customerKeyNumber, updatePayload);
-    if (updateResult.success && updateResult.data) {
-      return { success: true };
-    } else {
-      await deleteBulkMeterFromStore(addBillResult.data.id);
-      return { success: false, message: "Could not update the meter. The new bill has been rolled back." };
+    try {
+      const updateResult = await updateBulkMeterInStore(bulkMeter.customerKeyNumber, updatePayload);
+      if (updateResult && updateResult.success && updateResult.data) {
+        return { success: true };
+      }
+      // rollback: attempt to remove the created bill if update failed
+      try {
+        if (addBillResult && addBillResult.data && addBillResult.data.id) {
+          // deleteBillFromStore is not available here in this scope; skip if not defined
+          // await deleteBillFromStore(addBillResult.data.id);
+        }
+      } catch (_) { }
+      return { success: false, message: updateResult?.message || "Could not update the meter after creating bill." };
+    } catch (err) {
+      try {
+        if (addBillResult && addBillResult.data && addBillResult.data.id) {
+          // await deleteBillFromStore(addBillResult.data.id);
+        }
+      } catch (_) { }
+      return { success: false, message: (err as any)?.message || 'Unexpected error updating bulk meter.' };
     }
   };
 
@@ -235,28 +270,37 @@ export default function BulkMetersPage() {
     bm.subCity.toLowerCase().includes(searchTerm.toLowerCase()) ||
     bm.contractNumber.toLowerCase().includes(searchTerm.toLowerCase())
   );
-  
+
   const paginatedBulkMeters = filteredBulkMeters.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
-
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <h1 className="text-2xl md:text-3xl font-bold">Bulk Meters Management</h1>
         <div className="flex gap-2 w-full md:w-auto">
-           <div className="relative flex-grow">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search bulk meters..."
-              className="pl-8 w-full"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+          {viewMode === 'table' && (
+            <div className="relative flex-grow">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search bulk meters..."
+                className="pl-8 w-full"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setViewMode(viewMode === 'table' ? 'map' : 'table')}
+          >
+            <MapIcon className="mr-2 h-4 w-4" />
+            {viewMode === 'table' ? 'Map View' : 'Table View'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -275,47 +319,56 @@ export default function BulkMetersPage() {
         </div>
       </div>
 
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle>Bulk Meter List</CardTitle>
-          <CardDescription>View, edit, and manage bulk meter information.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-             <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">
+      {viewMode === 'map' && (
+        <div>
+          <BulkMeterMap bulkMeters={metersForUser.map(m => ({ ...m }))} branches={branches} />
+        </div>
+      )}
+
+      <div className={viewMode === 'table' ? '' : 'hidden'}>
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle>Bulk Meter List</CardTitle>
+            <CardDescription>View, edit, and manage bulk meter information.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">
                 Loading bulk meters...
-             </div>
-           ) : bulkMeters.length === 0 && !searchTerm ? (
-             <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
+              </div>
+            ) : bulkMeters.length === 0 && !searchTerm ? (
+              <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
                 <Gauge className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                 <h3 className="text-lg font-semibold">No Bulk Meters Found</h3>
                 <p className="text-muted-foreground mt-1">Click "Add New" to get started.</p>
-             </div>
-           ) : (
-            <BulkMeterTable
-              data={paginatedBulkMeters}
-              onEdit={handleEditBulkMeter}
-              onDelete={handleDeleteBulkMeter}
-              branches={branches}
-              canEdit={hasPermission('bulk_meters_update')}
-              canDelete={hasPermission('bulk_meters_delete')}
+              </div>
+            ) : (
+              <BulkMeterTable
+                data={paginatedBulkMeters}
+                onEdit={handleEditBulkMeter}
+                onDelete={handleDeleteBulkMeter}
+                branches={branches}
+                canEdit={hasPermission('bulk_meters_update')}
+                canDelete={hasPermission('bulk_meters_delete')}
+              />
+            )}
+          </CardContent>
+          {filteredBulkMeters.length > 0 && (
+            <TablePagination
+              count={filteredBulkMeters.length}
+              page={page}
+              rowsPerPage={rowsPerPage}
+              onPageChange={setPage}
+              onRowsPerPageChange={(value) => {
+                setRowsPerPage(value);
+                setPage(0);
+              }}
+              rowsPerPageOptions={[5, 10, 25]}
             />
           )}
-        </CardContent>
-        {filteredBulkMeters.length > 0 && (
-          <TablePagination
-            count={filteredBulkMeters.length}
-            page={page}
-            rowsPerPage={rowsPerPage}
-            onPageChange={setPage}
-            onRowsPerPageChange={(value) => {
-              setRowsPerPage(value);
-              setPage(0);
-            }}
-            rowsPerPageOptions={[5, 10, 25]}
-          />
-        )}
-      </Card>
+        </Card>
+      </div>
+
 
       {(hasPermission('bulk_meters_create') || hasPermission('bulk_meters_update')) && (
         <BulkMeterFormDialog

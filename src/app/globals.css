@@ -280,4 +280,8 @@ body {
   .print-signature-item span:last-child {
       font-family: monospace;
   }
+
+  .no-print {
+    display: none !important;
+  }
 }

@@ -5,7 +5,8 @@ import * as React from "react";
 import * as XLSX from 'xlsx';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, FileSpreadsheet, AlertCircle, Eye, Check, ChevronsUpDown } from "lucide-react";
+import { Download, FileSpreadsheet, AlertCircle, Eye, Check, ChevronsUpDown, TrendingUp } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -17,7 +18,8 @@ import {
   getBranches,
   initializeBranches,
   getBills,
-  initializeBills
+  initializeBills,
+  subscribeToBulkMeters,
 } from "@/lib/data-store";
 import type { IndividualCustomer } from "@/app/admin/individual-customers/individual-customer-types";
 import type { BulkMeter } from "@/app/admin/bulk-meters/bulk-meter-types";
@@ -31,7 +33,7 @@ import type { DateRange } from "react-day-picker";
 
 interface User {
   email: string;
-  role: "admin" | "staff" | "Admin" | "Staff";
+  role: "admin" | "staff" | "Admin" | "Staff" | "staff management";
   branchName?: string;
   branchId?: string;
 }
@@ -203,25 +205,75 @@ export default function StaffReportsPage() {
   const [isColumnSelectorOpen, setIsColumnSelectorOpen] = React.useState(false);
   const [reportData, setReportData] = React.useState<any[] | null>(null);
 
+  const [bulkMeters, setBulkMeters] = React.useState<BulkMeter[]>([]);
+  const [selectedYear, setSelectedYear] = React.useState<string>("all");
+  const [selectedMonth, setSelectedMonth] = React.useState<string>("all");
+  const [isLoading, setIsLoading] = React.useState(true);
+
   const selectedReport = availableStaffReports.find(report => report.id === selectedReportId);
 
+  const years = React.useMemo(() => {
+    const allYears = new Set(bulkMeters.map(bm => bm.month.split('-')[0]));
+    return Array.from(allYears).sort().reverse();
+  }, [bulkMeters]);
+
+  const chartData = React.useMemo(() => {
+    let filteredBms = bulkMeters;
+
+    if (staffBranchId) {
+      filteredBms = filteredBms.filter(bm => bm.branchId === staffBranchId);
+    }
+
+    if (selectedYear !== "all") {
+      filteredBms = filteredBms.filter(bm => bm.month.startsWith(selectedYear));
+    }
+    if (selectedMonth !== "all") {
+      filteredBms = filteredBms.filter(bm => bm.month.split('-')[1] === selectedMonth);
+    }
+    
+    const monthlyUsage: { [key: string]: { name: string; differenceUsage: number } } = {};
+
+    filteredBms.forEach(bm => {
+      const month = bm.month;
+      if (bm.differenceUsage) {
+        if (!monthlyUsage[month]) {
+          monthlyUsage[month] = { name: month, differenceUsage: 0 };
+        }
+        monthlyUsage[month].differenceUsage += bm.differenceUsage;
+      }
+    });
+
+    return Object.values(monthlyUsage).sort((a,b) => a.name.localeCompare(b.name));
+  }, [bulkMeters, staffBranchId, selectedYear, selectedMonth]);
+
   React.useEffect(() => {
-    initializeCustomers();
-    initializeBulkMeters();
-    initializeBranches();
-    initializeBills();
+    const fetchData = async () => {
+      setIsLoading(true);
+      await initializeCustomers();
+      await initializeBulkMeters();
+      await initializeBranches();
+      await initializeBills();
+      setBulkMeters(getBulkMeters());
+      setIsLoading(false);
+    };
+    fetchData();
+
+    const unsubBms = subscribeToBulkMeters(setBulkMeters);
 
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       try {
         const parsedUser: User = JSON.parse(storedUser);
-        if (parsedUser.role.toLowerCase() === "staff" && parsedUser.branchId && parsedUser.branchName) {
+        if ((parsedUser.role.toLowerCase() === "staff" || parsedUser.role.toLowerCase() === "staff management") && parsedUser.branchId && parsedUser.branchName) {
           setStaffBranchName(parsedUser.branchName);
           setStaffBranchId(parsedUser.branchId);
         }
       } catch (e) {
         console.error("Failed to parse user from localStorage", e);
       }
+    }
+    return () => {
+      unsubBms();
     }
   }, []);
 
@@ -320,6 +372,63 @@ export default function StaffReportsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl md:text-3xl font-bold">Generate Reports {staffBranchName ? `(${staffBranchName})` : ''}</h1>
       </div>
+      <Card className="shadow-lg">
+        <CardHeader>
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="h-8 w-8 text-primary" />
+              <div>
+                <CardTitle>Overall Difference Usage Trend</CardTitle>
+                <CardDescription>Shows the trend of difference usage for your branch.</CardDescription>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                  <SelectTrigger className="w-full md:w-[120px]">
+                      <SelectValue placeholder="Select Year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                      <SelectItem value="all">All Years</SelectItem>
+                      {years.map((year) => (
+                        <SelectItem key={year} value={year}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+              </Select>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="w-full md:w-[120px]">
+                      <SelectValue placeholder="Select Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                      <SelectItem value="all">All Months</SelectItem>
+                      {[...Array(12)].map((_, i) => (
+                        <SelectItem key={i+1} value={String(i + 1).padStart(2, '0')}>
+                          {new Date(0, i).toLocaleString('default', { month: 'long' })}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center p-8 text-muted-foreground">Loading chart data...</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis label={{ value: 'Usage (m³)', angle: -90, position: 'insideLeft' }} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="differenceUsage" fill="#8884d8" name="Difference Usage (m³)" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Report Generation</CardTitle>
@@ -474,3 +583,4 @@ export default function StaffReportsPage() {
     </div>
   );
 }
+

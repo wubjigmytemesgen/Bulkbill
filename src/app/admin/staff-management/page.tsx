@@ -20,7 +20,7 @@ import {
   initializeStaffMembers
 } from "@/lib/data-store";
 import { usePermissions } from "@/hooks/use-permissions";
-import { logSecurityEvent } from "@/lib/logger";
+import { logSecurityEventAction } from "@/lib/actions";
 import Link from "next/link";
 
 export default function StaffManagementPage() {
@@ -46,7 +46,7 @@ export default function StaffManagementPage() {
       setStaffMembers(getStaffMembers());
       setIsLoading(false);
     });
-    
+
     const unsubscribe = subscribeToStaffMembers((updatedStaff) => {
       setStaffMembers(updatedStaff);
     });
@@ -76,7 +76,7 @@ export default function StaffManagementPage() {
     if (staffToDelete) {
       const result = await deleteStaffMemberFromStore(staffToDelete.email);
       if (result.success) {
-        logSecurityEvent(`Staff member ${staffToDelete.name} (${staffToDelete.email}) deleted by ${currentUser?.email}.`, currentUser?.email, currentUser?.branchName);
+        logSecurityEventAction(`Staff member ${staffToDelete.name} (${staffToDelete.email}) deleted by ${currentUser?.email}.`, currentUser?.email, currentUser?.branchName);
         toast({ title: "Staff Deleted", description: `${staffToDelete.name} has been removed.` });
       } else {
         toast({ variant: "destructive", title: "Deletion Failed", description: result.message });
@@ -92,7 +92,7 @@ export default function StaffManagementPage() {
         if (!hasPermission('staff_update')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to update staff.' }); return; }
         const result = await updateStaffMemberInStore(selectedStaff.email, data);
         if (result.success) {
-          logSecurityEvent(`Staff member ${data.name} (${data.email}) updated by ${currentUser?.email}.`, currentUser?.email, currentUser?.branchName);
+          logSecurityEventAction(`Staff member ${data.name} (${data.email}) updated by ${currentUser?.email}.`, currentUser?.email, currentUser?.branchName);
           toast({ title: "Staff Updated", description: `${data.name} has been updated.` });
         } else {
           toast({ variant: "destructive", title: "Update Failed", description: result.message });
@@ -101,9 +101,10 @@ export default function StaffManagementPage() {
         if (!hasPermission('staff_create')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to create staff.' }); return; }
         const result = await addStaffMemberToStore(data as StaffMember);
         if (result.success) {
-          logSecurityEvent(`Staff member ${data.name} (${data.email}) added by ${currentUser?.email}.`, currentUser?.email, currentUser?.branchName);
+          logSecurityEventAction(`Staff member ${data.name} (${data.email}) added by ${currentUser?.email}.`, currentUser?.email, currentUser?.branchName);
           toast({ title: "Staff Added", description: `${data.name} has been added.` });
         } else {
+
           toast({ variant: "destructive", title: "Add Failed", description: result.message });
         }
       }
@@ -113,7 +114,7 @@ export default function StaffManagementPage() {
     setIsFormOpen(false);
     setSelectedStaff(null);
   };
-  
+
   const filteredStaff = staffMembers.filter(staff =>
     staff.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     staff.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -125,7 +126,7 @@ export default function StaffManagementPage() {
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <h1 className="text-2xl md:text-3xl font-bold">Staff Management</h1>
         <div className="flex w-full flex-col sm:flex-row items-center gap-2">
-           <div className="relative w-full sm:w-auto flex-grow">
+          <div className="relative w-full sm:w-auto flex-grow">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
@@ -154,20 +155,20 @@ export default function StaffManagementPage() {
               Loading staff members...
             </div>
           ) : staffMembers.length === 0 && !searchTerm ? (
-             <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
-                <UserCog className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <h3 className="text-lg font-semibold">No Staff Members Found</h3>
-                <p className="text-muted-foreground mt-1">Click "Add New" to get started.</p>
-             </div>
+            <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
+              <UserCog className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold">No Staff Members Found</h3>
+              <p className="text-muted-foreground mt-1">Click "Add New" to get started.</p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
-                <StaffTable
+              <StaffTable
                 data={filteredStaff}
                 onEdit={handleEditStaff}
                 onDelete={handleDeleteStaff}
                 canEdit={hasPermission('staff_update')}
                 canDelete={hasPermission('staff_delete')}
-                />
+              />
             </div>
           )}
         </CardContent>
@@ -187,7 +188,7 @@ export default function StaffManagementPage() {
           </Link>
         </CardContent>
       </Card>
-      
+
       {(hasPermission('staff_create') || hasPermission('staff_update')) && (
         <StaffFormDialog
           open={isFormOpen}

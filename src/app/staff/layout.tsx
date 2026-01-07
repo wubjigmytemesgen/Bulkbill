@@ -10,13 +10,13 @@ import { useRouter } from 'next/navigation';
 import { refetchUserPermissions } from "@/lib/data-store";
 
 interface UserProfile {
-  id: string;
-  email: string;
-  role: string;
-  permissions?: string[];
-  branchName?: string;
-  branchId?: string;
-  name?: string;
+    id: string;
+    email: string;
+    role: string;
+    permissions?: string[];
+    branchName?: string;
+    branchId?: string;
+    name?: string;
 }
 
 const buildStaffSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => {
@@ -41,7 +41,7 @@ const buildStaffSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => 
     if (hasPermission('notifications_view')) managementItems.push({ title: "Notifications", href: "/staff/notifications", iconName: "Bell" });
     if (hasPermission('tariffs_view')) managementItems.push({ title: "Tariff Management", href: "/staff/tariffs", iconName: "LibraryBig" });
     if (hasPermission('knowledge_base_manage')) managementItems.push({ title: "Knowledge Base", href: "/staff/knowledge-base", iconName: "BookText" });
-    
+
     if (managementItems.length > 0) {
         navItems.push({ title: "Management", items: managementItems });
     }
@@ -69,9 +69,9 @@ const buildStaffSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => 
     }
 
     if (hasPermission('settings_view')) {
-      navItems.push({
-        items: [{ title: "Settings", href: "/staff/settings", iconName: "Settings" }]
-      });
+        navItems.push({
+            items: [{ title: "Settings", href: "/staff/settings", iconName: "Settings" }]
+        });
     }
 
     return navItems;
@@ -101,6 +101,21 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
         };
 
         fetchUser();
+
+        const handlePermissionsUpdate = () => {
+            const storedUser = localStorage.getItem("user");
+            if (storedUser) {
+                try {
+                    const parsedUser = JSON.parse(storedUser);
+                    setUser(parsedUser);
+                } catch (e) {
+                    console.error("Failed to parse user from localStorage", e);
+                }
+            }
+        };
+
+        window.addEventListener('user-permissions-updated', handlePermissionsUpdate);
+        return () => window.removeEventListener('user-permissions-updated', handlePermissionsUpdate);
     }, [router]);
 
     const navItems = buildStaffSidebarNavItems(user);
@@ -113,17 +128,17 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
     }), [user]);
 
     if (isLoading) {
-       return (
-         <div className="flex items-center justify-center h-screen">
-           <Skeleton className="h-16 w-16" />
-         </div>
-       );
+        return (
+            <div className="flex items-center justify-center h-screen">
+                <Skeleton className="h-16 w-16" />
+            </div>
+        );
     }
 
     if (!user) {
         return null;
     }
-    
+
     // Ensure user passed to AppShell is a plain object (strip prototypes)
     const safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
     return (

@@ -8,21 +8,21 @@ import { PermissionsContext, type PermissionsContextType } from '@/hooks/use-per
 import { refetchUserPermissions } from "@/lib/data-store";
 
 interface UserProfile {
-  id: string; 
-  email: string;
-  role: string;
-  permissions?: string[];
-  branchName?: string;
-  branchId?: string;
-  name?: string;
+    id: string;
+    email: string;
+    role: string;
+    permissions?: string[];
+    branchName?: string;
+    branchId?: string;
+    name?: string;
 }
 
 const buildSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => {
     if (!user) return [];
-    
+
     const permissions = new Set(user.permissions || []);
     const userRoleLower = user.role.toLowerCase();
-    
+
     const hasPermission = (p: string) => userRoleLower === 'admin' || permissions.has(p);
 
     const navItems: NavItemGroup[] = [];
@@ -30,7 +30,7 @@ const buildSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => {
     let dashboardHref = "/admin/dashboard"; // Default for Admin
     if (userRoleLower === 'head office management') dashboardHref = '/admin/head-office-dashboard';
     if (userRoleLower === 'staff management') dashboardHref = '/admin/staff-management-dashboard';
-    
+
     if (hasPermission('dashboard_view_all') || hasPermission('dashboard_view_branch')) {
         navItems.push({
             items: [{ title: "Dashboard", href: dashboardHref, iconName: "LayoutDashboard" }]
@@ -45,11 +45,11 @@ const buildSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => {
     if (hasPermission('notifications_view')) managementItems.push({ title: "Notifications", href: "/admin/notifications", iconName: "Bell" });
     if (hasPermission('tariffs_view')) managementItems.push({ title: "Tariff Management", href: "/admin/tariffs", iconName: "LibraryBig" });
     if (hasPermission('knowledge_base_manage')) managementItems.push({ title: "Knowledge Base", href: "/admin/knowledge-base", iconName: "BookText" });
-    
+
     if (managementItems.length > 0) {
         navItems.push({ title: "Management", items: managementItems });
     }
-    
+
     const customerMeteringItems: NavItem[] = [];
     if (hasPermission('bulk_meters_view_all') || hasPermission('bulk_meters_view_branch')) customerMeteringItems.push({ title: "Bulk Meters", href: "/admin/bulk-meters", iconName: "Gauge" });
     if (hasPermission('customers_view_all') || hasPermission('customers_view_branch')) customerMeteringItems.push({ title: "Individual Customers", href: "/admin/individual-customers", iconName: "Users" });
@@ -67,7 +67,7 @@ const buildSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => {
         dataReportsItems.push({ title: "List Of Sent Bills", href: "/admin/reports/sent-bills", iconName: "Send" });
         dataReportsItems.push({ title: "List of Unsettled Bills", href: "/admin/reports/unsettled-bills", iconName: "FileClock" });
     }
-    
+
     if (dataReportsItems.length > 0) {
         navItems.push({ title: "Data & Reports", items: dataReportsItems });
     }
@@ -78,11 +78,11 @@ const buildSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => {
     if (securityItems.length > 0) {
         navItems.push({ title: "Security", items: securityItems });
     }
-    
+
     if (hasPermission('settings_view')) {
-      navItems.push({
-        items: [{ title: "Settings", href: "/admin/settings", iconName: "Settings" }]
-      });
+        navItems.push({
+            items: [{ title: "Settings", href: "/admin/settings", iconName: "Settings" }]
+        });
     }
 
     return navItems;
@@ -91,7 +91,7 @@ const buildSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => {
 
 interface AdminLayoutClientProps {
     children: React.ReactNode;
-    user: UserProfile | null; 
+    user: UserProfile | null;
 }
 
 
@@ -113,6 +113,21 @@ export default function AdminLayoutClient({ children, user: initialUser }: Admin
         };
 
         fetchUser();
+
+        const handlePermissionsUpdate = () => {
+            const storedUser = localStorage.getItem("user");
+            if (storedUser) {
+                try {
+                    const parsedUser = JSON.parse(storedUser);
+                    setUser(parsedUser);
+                } catch (e) {
+                    console.error("Failed to parse user from localStorage", e);
+                }
+            }
+        };
+
+        window.addEventListener('user-permissions-updated', handlePermissionsUpdate);
+        return () => window.removeEventListener('user-permissions-updated', handlePermissionsUpdate);
     }, []);
 
     const navItems = buildSidebarNavItems(user);

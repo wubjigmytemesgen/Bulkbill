@@ -1,7 +1,7 @@
 
 import type { z } from "zod";
 import type { baseBulkMeterDataSchema } from "@/app/admin/data-entry/customer-data-entry-types";
-import type { PaymentStatus, CustomerType, SewerageConnection } from "@/lib/billing"; // Import CustomerType
+import type { PaymentStatus, CustomerType, SewerageConnection } from "@/lib/billing-calculations"; // Import CustomerType
 
 export const bulkMeterStatuses = ['Active', 'Maintenance', 'Pending Approval', 'Rejected'] as const;
 export type BulkMeterStatus = (typeof bulkMeterStatuses)[number];
@@ -12,8 +12,8 @@ export type BulkMeterStatus = (typeof bulkMeterStatuses)[number];
 export type BulkMeter = z.infer<typeof baseBulkMeterDataSchema> & {
   // id: string; // Removed, customerKeyNumber is the PK
   status: BulkMeterStatus;
-  paymentStatus: PaymentStatus; 
-  outStandingbill: number; 
+  paymentStatus: PaymentStatus;
+  outStandingbill: number;
   branchId?: string; // New field for branch association
   bulkUsage?: number;
   totalBulkBill?: number;

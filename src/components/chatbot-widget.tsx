@@ -13,6 +13,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 
 
+import { usePermissions } from '@/hooks/use-permissions';
+
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -26,6 +29,7 @@ export function ChatbotWidget() {
   const [isLoading, setIsLoading] = React.useState(false);
   const scrollAreaRef = React.useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const { permissions } = usePermissions();
 
   const handleToggle = () => {
     setIsOpen(prev => {
@@ -59,7 +63,7 @@ export function ChatbotWidget() {
     setIsLoading(true);
 
     try {
-      const response = await askChatbot({ query });
+      const response = await askChatbot({ query, permissions: Array.from(permissions) });
       const assistantMessage: Message = { id: `assistant-${Date.now()}`, role: 'assistant', text: response.answer };
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {

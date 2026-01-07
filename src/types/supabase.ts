@@ -213,6 +213,7 @@ export type Database = {
           month: string
           name: string
           outStandingbill: number | null
+          phoneNumber: string | null
           paymentStatus: "Paid" | "Unpaid"
           previousReading: number
           sewerage_connection: "Yes" | "No"
@@ -242,6 +243,7 @@ export type Database = {
           month: string
           name: string
           outStandingbill?: number | null
+          phoneNumber?: string | null
           paymentStatus: "Paid" | "Unpaid"
           previousReading: number
           sewerage_connection: "Yes" | "No"
@@ -271,6 +273,7 @@ export type Database = {
           month?: string
           name?: string
           outStandingbill?: number | null
+          phoneNumber?: string | null
           paymentStatus?: "Paid" | "Unpaid"
           previousReading?: number
           sewerage_connection?: "Yes" | "No"
@@ -491,6 +494,7 @@ export type Database = {
           message: string
           sender_name: string
           target_branch_id: string | null
+          phoneNumber: string | null
           title: string
         }
         Insert: {
@@ -499,6 +503,7 @@ export type Database = {
           message: string
           sender_name: string
           target_branch_id?: string | null
+          phoneNumber?: string | null
           title: string
         }
         Update: {
@@ -507,6 +512,7 @@ export type Database = {
           message?: string
           sender_name?: string
           target_branch_id?: string | null
+          phoneNumber?: string | null
           title?: string
         }
         Relationships: [

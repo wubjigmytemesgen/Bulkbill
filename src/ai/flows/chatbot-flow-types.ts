@@ -3,6 +3,7 @@ import { z } from 'zod';
 // Define the input and output schemas for the chatbot flow.
 export const ChatbotRequestSchema = z.object({
   query: z.string().describe("The user's question for the chatbot."),
+  permissions: z.array(z.string()).optional().describe("The user's permissions."),
 });
 export type ChatbotRequest = z.infer<typeof ChatbotRequestSchema>;
 

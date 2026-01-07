@@ -24,7 +24,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { format, parse } from "date-fns";
 import type { BulkMeter } from "../bulk-meters/bulk-meter-types";
 import type { Branch } from "../branches/branch-types";
-import { customerTypes, sewerageConnections } from "@/lib/billing";
+import { customerTypes, sewerageConnections } from "@/lib/billing-calculations";
 import type { StaffMember } from "../staff-management/staff-types";
 
 
@@ -44,15 +44,15 @@ export function BulkMeterDataEntryForm() {
 
     initializeCustomers();
     initializeBulkMeters();
-    
+
     setIsLoadingBranches(true);
     initializeAdminBranches().then(() => {
-        setAvailableBranches(getBranches());
-        setIsLoadingBranches(false);
+      setAvailableBranches(getBranches());
+      setIsLoadingBranches(false);
     });
     const unsubscribeBranches = subscribeToBranches((updatedBranches) => {
-        setAvailableBranches(updatedBranches);
-        setIsLoadingBranches(false);
+      setAvailableBranches(updatedBranches);
+      setIsLoadingBranches(false);
     });
     return () => unsubscribeBranches();
   }, []);
@@ -67,10 +67,11 @@ export function BulkMeterDataEntryForm() {
       meterNumber: "",
       previousReading: undefined,
       currentReading: undefined,
-      month: "", 
+      month: "",
       specificArea: "",
       subCity: "",
       woreda: "",
+      phoneNumber: "",
       branchId: undefined,
       chargeGroup: "Non-domestic",
       sewerageConnection: "No",
@@ -81,8 +82,8 @@ export function BulkMeterDataEntryForm() {
 
   async function onSubmit(data: BulkMeterDataEntryFormValues) {
     if (!currentUser) {
-        toast({ variant: 'destructive', title: 'Error', description: 'User information not found.' });
-        return;
+      toast({ variant: 'destructive', title: 'Error', description: 'User information not found.' });
+      return;
     }
 
     const result = await addBulkMeterToStore(data, currentUser);
@@ -92,7 +93,7 @@ export function BulkMeterDataEntryForm() {
         title: "Data Entry Submitted",
         description: `Data for bulk meter ${result.data.name} has been successfully recorded and is pending approval.`,
       });
-      form.reset(); 
+      form.reset();
     } else {
       toast({
         variant: "destructive",
@@ -101,7 +102,7 @@ export function BulkMeterDataEntryForm() {
       });
     }
   }
-  
+
   const handleBranchChange = (branchIdValue: string) => {
     const selectedBranch = availableBranches.find(b => b.id === branchIdValue);
     if (selectedBranch) {
@@ -112,7 +113,7 @@ export function BulkMeterDataEntryForm() {
   };
 
   return (
-    <ScrollArea className="h-[calc(100vh-280px)]"> 
+    <ScrollArea className="h-[calc(100vh-280px)]">
       <Card className="shadow-lg w-full">
         <CardContent className="pt-6">
           <Form {...form}>
@@ -120,8 +121,8 @@ export function BulkMeterDataEntryForm() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
                   control={form.control}
-                  name="branchId" 
-                  render={({ field }) => ( 
+                  name="branchId"
+                  render={({ field }) => (
                     <FormItem>
                       <FormLabel>Assign to Branch</FormLabel>
                       <Select
@@ -188,14 +189,14 @@ export function BulkMeterDataEntryForm() {
                     </FormItem>
                   )}
                 />
-                 <FormField
+                <FormField
                   control={form.control}
                   name="meterSize"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Meter Size (inch) <span className="text-destructive">*</span></FormLabel>
-                      <Select 
-                        onValueChange={field.onChange} 
+                      <Select
+                        onValueChange={field.onChange}
                         value={field.value ? String(field.value) : undefined}
                       >
                         <FormControl>
@@ -235,11 +236,11 @@ export function BulkMeterDataEntryForm() {
                     <FormItem>
                       <FormLabel>Previous Reading <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          step="0.01" 
+                        <Input
+                          type="number"
+                          step="0.01"
                           placeholder="Enter previous reading"
-                          {...field} 
+                          {...field}
                           value={field.value ?? ""}
                           onChange={e => {
                             const val = e.target.value;
@@ -258,11 +259,11 @@ export function BulkMeterDataEntryForm() {
                     <FormItem>
                       <FormLabel>Current Reading <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          step="0.01" 
+                        <Input
+                          type="number"
+                          step="0.01"
                           placeholder="Enter current reading"
-                          {...field} 
+                          {...field}
                           value={field.value ?? ""}
                           onChange={e => {
                             const val = e.target.value;
@@ -280,7 +281,7 @@ export function BulkMeterDataEntryForm() {
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>Reading Month <span className="text-destructive">*</span></FormLabel>
-                       <DatePicker
+                      <DatePicker
                         date={field.value ? parse(field.value, "yyyy-MM", new Date()) : undefined}
                         setDate={(selectedDate) => {
                           field.onChange(selectedDate ? format(selectedDate, "yyyy-MM") : "");
@@ -333,7 +334,7 @@ export function BulkMeterDataEntryForm() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Woreda <span className="text-destructive">*</span></FormLabel>
-                       <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select a Woreda" />
@@ -351,7 +352,20 @@ export function BulkMeterDataEntryForm() {
                     </FormItem>
                   )}
                 />
-                 <FormField
+                <FormField
+                  control={form.control}
+                  name="phoneNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter phone number" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
                   control={form.control}
                   name="chargeGroup"
                   render={({ field }) => (
@@ -414,8 +428,8 @@ export function BulkMeterDataEntryForm() {
                     <FormItem>
                       <FormLabel>X Coordinate (Optional)</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
+                        <Input
+                          type="number"
                           step="any"
                           placeholder="e.g., 9.005401"
                           {...field}
@@ -437,8 +451,8 @@ export function BulkMeterDataEntryForm() {
                     <FormItem>
                       <FormLabel>Y Coordinate (Optional)</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
+                        <Input
+                          type="number"
                           step="any"
                           placeholder="e.g., 38.763611"
                           {...field}

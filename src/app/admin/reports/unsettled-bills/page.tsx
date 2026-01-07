@@ -41,7 +41,8 @@ export default function UnsettledBillsReportPage() {
     if(user) {
       const parsedUser = JSON.parse(user);
       setCurrentUser(parsedUser);
-      if (parsedUser.role?.toLowerCase() === 'staff management' && parsedUser.branchId) {
+      // If the user has a branch assigned, default the branch filter to their branch.
+      if (parsedUser.branchId) {
         setSelectedBranchId(parsedUser.branchId);
       }
     }
@@ -78,7 +79,11 @@ export default function UnsettledBillsReportPage() {
   const filteredBills = React.useMemo(() => {
     let visibleBills = bills.filter(bill => bill.paymentStatus !== 'Paid');
     
-    const branchIdToFilter = currentUser?.role?.toLowerCase() === 'staff management' ? currentUser.branchId : selectedBranchId;
+    // If the current user does NOT have permission to generate reports for all branches,
+    // and they have a `branchId` assigned, force the filter to their branch.
+    const branchIdToFilter = (currentUser && currentUser.branchId && !hasPermission('reports_generate_all'))
+      ? currentUser.branchId
+      : selectedBranchId;
     
     if (branchIdToFilter && branchIdToFilter !== "all") {
         visibleBills = visibleBills.filter(bill => {
