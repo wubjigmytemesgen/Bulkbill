@@ -53,7 +53,6 @@ const BRANCH_UNASSIGNED_VALUE = "_SELECT_BRANCH_INDIVIDUAL_";
 
 export function IndividualCustomerDataEntryForm() {
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = React.useState<StaffMember | null>(null);
   const [availableBulkMeters, setAvailableBulkMeters] = React.useState<{ customerKeyNumber: string, name: string }[]>([]);
   const [isLoadingBulkMeters, setIsLoadingBulkMeters] = React.useState(true);
   const [availableBranches, setAvailableBranches] = React.useState<Branch[]>([]);
@@ -61,11 +60,6 @@ export function IndividualCustomerDataEntryForm() {
 
 
   React.useEffect(() => {
-    const userJson = localStorage.getItem('user');
-    if (userJson) {
-      setCurrentUser(JSON.parse(userJson));
-    }
-
     setIsLoadingBulkMeters(true);
     Promise.all([
       initializeBulkMeters(),
@@ -102,6 +96,7 @@ export function IndividualCustomerDataEntryForm() {
       branchId: undefined, // Initialize branchId
       name: "",
       customerKeyNumber: "",
+      instKey: "",
       contractNumber: "",
       customerType: undefined,
       bookNumber: "",
@@ -121,17 +116,13 @@ export function IndividualCustomerDataEntryForm() {
   });
 
   async function onSubmit(data: AdminDataEntryFormValues) {
-    if (!currentUser) {
-      toast({ variant: 'destructive', title: 'Error', description: 'User information not found.' });
-      return;
-    }
     const submissionData = {
       ...data,
       assignedBulkMeterId: data.assignedBulkMeterId === UNASSIGNED_BULK_METER_VALUE ? undefined : data.assignedBulkMeterId,
       branchId: data.branchId === BRANCH_UNASSIGNED_VALUE ? undefined : data.branchId,
     };
 
-    const result = await addCustomerToStore(submissionData, currentUser);
+    const result = await addCustomerToStore(submissionData);
     if (result.success && result.data) {
       toast({
         title: "Data Entry Submitted",
@@ -239,11 +230,13 @@ export function IndividualCustomerDataEntryForm() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
                 <FormField control={form.control} name="customerKeyNumber" render={({ field }) => (<FormItem><FormLabel>Cust. Key No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField control={form.control} name="instKey" render={({ field }) => (<FormItem><FormLabel>INST_KEY <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} placeholder="e.g., INST-12345" disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
                 <FormField control={form.control} name="contractNumber" render={({ field }) => (<FormItem><FormLabel>Contract No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
 
                 <FormField control={form.control} name="customerType" render={({ field }) => (<FormItem><FormLabel>Customer Type <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={form.formState.isSubmitting}><FormControl><SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger></FormControl><SelectContent>{customerTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                 <FormField control={form.control} name="bookNumber" render={({ field }) => (<FormItem><FormLabel>Book No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
                 <FormField control={form.control} name="ordinal" render={({ field }) => (<FormItem><FormLabel>Ordinal <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value, 10))} disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField control={form.control} name="NUMBER_OF_DIALS" render={({ field }) => (<FormItem><FormLabel>Number of Dials</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value, 10))} disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
 
                 <FormField
                   control={form.control}
@@ -269,7 +262,7 @@ export function IndividualCustomerDataEntryForm() {
                     </FormItem>
                   )}
                 />
-                <FormField control={form.control} name="meterNumber" render={({ field }) => (<FormItem><FormLabel>Meter No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField control={form.control} name="meterNumber" render={({ field }) => (<FormItem><FormLabel>METER_KEY <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} placeholder="e.g., MET-2822965" disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
                 <FormField control={form.control} name="previousReading" render={({ field }) => (<FormItem><FormLabel>Previous Reading <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
 
                 <FormField control={form.control} name="currentReading" render={({ field }) => (<FormItem><FormLabel>Current Reading <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} disabled={form.formState.isSubmitting} /></FormControl><FormMessage /></FormItem>)} />

@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { arrayToXlsxBlob, downloadFile } from '@/lib/xlsx';
+import { arrayToXlsxBlob, arrayToCsvBlob, downloadFile } from '@/lib/xlsx';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, FileSpreadsheet, Info, AlertCircle, Lock, Archive, Trash2, Filter, Check, ChevronsUpDown, Eye, TrendingUp } from "lucide-react";
@@ -45,12 +45,12 @@ import { cn } from "@/lib/utils";
 import { ReportDataView } from './report-data-view';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { calculateBillAction } from "@/lib/actions";
-import { type CustomerType, type SewerageConnection } from "@/lib/billing-calculations";
+import { type CustomerType, type SewerageConnection, customerTypes } from "@/lib/billing-calculations";
 import { ReportAIAssistant } from "./report-ai-assistant";
 
 
 // Top-level type guards for meter reading unions (used by multiple reports)
-const isBulkReading = (r: any): r is { meterType: string; bulkMeterId?: string } => {
+const isBulkReading = (r: any): r is { meterType: string; CUSTOMERKEY?: string } => {
   return r && typeof r === 'object' && 'meterType' in r && r.meterType === 'bulk_meter';
 };
 
@@ -63,6 +63,7 @@ interface ReportFilters {
   branchId?: string;
   startDate?: Date;
   endDate?: Date;
+  chargeGroup?: string;
 }
 
 interface ReportType {
@@ -188,35 +189,49 @@ const availableReports: ReportType[] = [
     name: "Billing Summary Report (XLSX)",
     description: "Summary of all generated bills, including amounts and payment statuses.",
     headers: [
-      "id", "individualCustomerId", "bulkMeterId", "billPeriodStartDate", "billPeriodEndDate",
-      "monthYear", "previousReadingValue", "currentReadingValue", "usageM3",
+      "id", "BILLKEY", "CUSTOMERKEY", "CUSTOMERNAME", "CUSTOMERTIN", "CUSTOMERBRANCH", "billPeriodStartDate", "billPeriodEndDate",
+      "monthYear", "PREVREAD", "CURRREAD", "CONS", "REASON",
       "baseWaterCharge", "sewerageCharge", "maintenanceFee", "sanitationFee",
-      "meterRent", "totalAmountDue", "amountPaid", "balanceDue", "dueDate",
-      "paymentStatus", "billNumber", "notes", "createdAt", "updatedAt"
+      "meterRent", "THISMONTHBILLAMT", "PENALTYAMT", "TOTALBILLAMOUNT", "amountPaid", "OUTSTANDINGAMT", "dueDate",
+      "paymentStatus", "billNumber", "DRACCTNO", "CRACCTNO", "notes", "createdAt", "updatedAt"
     ],
     getData: (filters) => {
       const { branchId, startDate, endDate } = filters;
-      let bills = getBills();
+      let billsList = getBills();
 
       if (branchId) {
         const bulkMetersInBranch = getBulkMeters().filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber);
         const customersInBranch = getCustomers().filter(c => c.branchId === branchId).map(c => c.customerKeyNumber);
-        bills = bills.filter(b =>
-          (b.bulkMeterId && bulkMetersInBranch.includes(b.bulkMeterId)) ||
+        billsList = billsList.filter(b =>
+          (b.CUSTOMERKEY && bulkMetersInBranch.includes(b.CUSTOMERKEY)) ||
           (b.individualCustomerId && customersInBranch.includes(b.individualCustomerId))
         );
       }
       if (startDate && endDate) {
         const start = startDate.getTime();
         const end = endDate.getTime();
-        bills = bills.filter(b => {
+        billsList = billsList.filter(b => {
           try {
             const billDate = new Date(b.billPeriodEndDate).getTime();
             return billDate >= start && billDate <= end;
           } catch { return false; }
         });
       }
-      return bills;
+
+      // Map CUSTOMERKEY to include individualCustomerId if CUSTOMERKEY is missing
+      return billsList.map(b => {
+        let billKey = b.BILLKEY;
+        if (!billKey) {
+          const idHex = (b.id || "").replace(/-/g, '').substring(0, 8);
+          const idNumeric = parseInt(idHex, 16);
+          billKey = isNaN(idNumeric) ? "BBPT-0000000000" : `BBPT-${String(idNumeric).padStart(10, '0')}`;
+        }
+        return {
+          ...b,
+          BILLKEY: billKey,
+          CUSTOMERKEY: b.CUSTOMERKEY || (b as any).individualCustomerId,
+        };
+      });
     },
   },
   {
@@ -224,10 +239,10 @@ const availableReports: ReportType[] = [
     name: "List Of Paid Bills (XLSX)",
     description: "A filtered list showing only the bills that have been marked as 'Paid'.",
     headers: [
-      "id", "individualCustomerId", "bulkMeterId", "billPeriodStartDate", "billPeriodEndDate",
-      "monthYear", "previousReadingValue", "currentReadingValue", "usageM3",
+      "id", "individualCustomerId", "CUSTOMERKEY", "billPeriodStartDate", "billPeriodEndDate",
+      "monthYear", "PREVREAD", "CURRREAD", "CONS",
       "baseWaterCharge", "sewerageCharge", "maintenanceFee", "sanitationFee",
-      "meterRent", "totalAmountDue", "amountPaid", "balanceDue", "dueDate",
+      "meterRent", "TOTALBILLAMOUNT", "amountPaid", "OUTSTANDINGAMT", "dueDate",
       "paymentStatus", "billNumber", "notes", "createdAt", "updatedAt"
     ],
     getData: (filters) => {
@@ -238,7 +253,7 @@ const availableReports: ReportType[] = [
         const bulkMetersInBranch = getBulkMeters().filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber);
         const customersInBranch = getCustomers().filter(c => c.branchId === branchId).map(c => c.customerKeyNumber);
         bills = bills.filter(b =>
-          (b.bulkMeterId && bulkMetersInBranch.includes(b.bulkMeterId)) ||
+          (b.CUSTOMERKEY && bulkMetersInBranch.includes(b.CUSTOMERKEY)) ||
           (b.individualCustomerId && customersInBranch.includes(b.individualCustomerId))
         );
       }
@@ -260,10 +275,10 @@ const availableReports: ReportType[] = [
     name: "List Of Sent Bills (XLSX)",
     description: "A comprehensive list of all bills that have been generated, regardless of payment status.",
     headers: [
-      "id", "individualCustomerId", "bulkMeterId", "billPeriodStartDate", "billPeriodEndDate",
-      "monthYear", "previousReadingValue", "currentReadingValue", "usageM3",
+      "id", "individualCustomerId", "CUSTOMERKEY", "billPeriodStartDate", "billPeriodEndDate",
+      "monthYear", "PREVREAD", "CURRREAD", "CONS",
       "baseWaterCharge", "sewerageCharge", "maintenanceFee", "sanitationFee",
-      "meterRent", "totalAmountDue", "amountPaid", "balanceDue", "dueDate",
+      "meterRent", "TOTALBILLAMOUNT", "amountPaid", "OUTSTANDINGAMT", "dueDate",
       "paymentStatus", "billNumber", "notes", "createdAt", "updatedAt"
     ],
     getData: (filters) => {
@@ -274,7 +289,7 @@ const availableReports: ReportType[] = [
         const bulkMetersInBranch = getBulkMeters().filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber);
         const customersInBranch = getCustomers().filter(c => c.branchId === branchId).map(c => c.customerKeyNumber);
         bills = bills.filter(b =>
-          (b.bulkMeterId && bulkMetersInBranch.includes(b.bulkMeterId)) ||
+          (b.CUSTOMERKEY && bulkMetersInBranch.includes(b.CUSTOMERKEY)) ||
           (b.individualCustomerId && customersInBranch.includes(b.individualCustomerId))
         );
       }
@@ -296,7 +311,7 @@ const availableReports: ReportType[] = [
     name: "Water Usage Report (XLSX)",
     description: "Detailed water consumption report from all meter readings.",
     headers: [
-      "id", "meterType", "individualCustomerId", "bulkMeterId", "readerStaffId",
+      "id", "meterType", "individualCustomerId", "CUSTOMERKEY", "readerStaffId",
       "readingDate", "monthYear", "readingValue", "isEstimate", "notes",
       "createdAt", "updatedAt"
     ],
@@ -308,7 +323,7 @@ const availableReports: ReportType[] = [
         const bulkMetersInBranch = getBulkMeters().filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber);
         const customersInBranch = getCustomers().filter(c => c.branchId === branchId).map(c => c.customerKeyNumber);
         readings = readings.filter(r =>
-          (isBulkReading(r) && r.bulkMeterId && bulkMetersInBranch.includes(r.bulkMeterId)) ||
+          (isBulkReading(r) && r.CUSTOMERKEY && bulkMetersInBranch.includes(r.CUSTOMERKEY)) ||
           (isIndividualReading(r) && r.individualCustomerId && customersInBranch.includes(r.individualCustomerId))
         );
       }
@@ -378,7 +393,7 @@ const availableReports: ReportType[] = [
         const bulkMetersInBranch = bulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber);
         const customersInBranch = customers.filter(c => c.branchId === branchId).map(c => c.customerKeyNumber);
         filteredReadings = filteredReadings.filter(r =>
-          (isBulkReading(r) && r.bulkMeterId && bulkMetersInBranch.includes(r.bulkMeterId)) ||
+          (isBulkReading(r) && r.CUSTOMERKEY && bulkMetersInBranch.includes(r.CUSTOMERKEY)) ||
           (isIndividualReading(r) && r.individualCustomerId && customersInBranch.includes(r.individualCustomerId))
         );
       }
@@ -398,9 +413,9 @@ const availableReports: ReportType[] = [
         if (isIndividualReading(r) && r.individualCustomerId) {
           const cust = customers.find(c => c.customerKeyNumber === r.individualCustomerId);
           meterIdentifier = cust ? `${cust.name} (M: ${cust.meterNumber || 'N/A'})` : `Cust ID: ${r.individualCustomerId}`;
-        } else if (isBulkReading(r) && r.bulkMeterId) {
-          const bm = bulkMeters.find(b => b.customerKeyNumber === r.bulkMeterId);
-          meterIdentifier = bm ? `${bm.name} (M: ${bm.meterNumber || 'N/A'})` : `BM ID: ${r.bulkMeterId}`;
+        } else if (isBulkReading(r) && r.CUSTOMERKEY) {
+          const bm = bulkMeters.find(b => b.customerKeyNumber === r.CUSTOMERKEY);
+          meterIdentifier = bm ? `${bm.name} (M: ${bm.meterNumber || 'N/A'})` : `BM ID: ${r.CUSTOMERKEY}`;
         }
 
         const reader = r.readerStaffId ? staffList.find(s => s.id === r.readerStaffId) : null;
@@ -413,7 +428,7 @@ const availableReports: ReportType[] = [
           "Reading Date": r.readingDate,
           "Month/Year": r.monthYear,
           "Reading Value": r.readingValue,
-          "Is Estimate": r.isEstimate ? "Yes" : "No",
+          "Is Estimate": 'isEstimate' in r && r.isEstimate ? "Yes" : "No",
           "Reader Name": readerName,
           "Reader Staff ID": r.readerStaffId || "N/A",
           "Notes": r.notes || "",
@@ -440,7 +455,7 @@ const availableReports: ReportType[] = [
     name: "Meter Readings Data Export (XLSX)",
     description: "Download a comprehensive list of all meter readings.",
     headers: [
-      "id", "meterType", "individualCustomerId", "bulkMeterId", "readerStaffId",
+      "id", "meterType", "individualCustomerId", "CUSTOMERKEY", "readerStaffId",
       "readingDate", "monthYear", "readingValue", "isEstimate", "notes",
       "createdAt", "updatedAt"
     ],
@@ -459,6 +474,310 @@ const availableReports: ReportType[] = [
       return getStaffMembers();
     },
   },
+  {
+    id: "gl-finance-monthly",
+    name: "GL Finance Monthly Report (XLSX)",
+    description: "Monthly summary of billing components grouped by charge group.",
+    headers: [
+      "Period", "Charge Group", "Base Water Charge", "Sewerage Charge", "Maintenance Fee",
+      "Sanitation Fee", "Meter Rent", "Additional Fees", "VAT Amount", "Total Excl VAT", "Total Incl VAT", "Total Amount"
+    ],
+    getData: (filters: ReportFilters) => {
+      const { branchId, startDate, endDate, chargeGroup: filterChargeGroup } = filters;
+      const allBills = getBills();
+      const allCustomers = getCustomers();
+      const allBulkMeters = getBulkMeters();
+
+      const branchBulkMeterKeys = new Set(allBulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber));
+
+      let filteredBills = allBills;
+      if (branchId) {
+        filteredBills = filteredBills.filter(bill => {
+          if (bill.CUSTOMERKEY) return branchBulkMeterKeys.has(bill.CUSTOMERKEY);
+          if (bill.individualCustomerId) {
+            const customer = allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId);
+            return customer && (customer.branchId === branchId || (customer.assignedBulkMeterId && branchBulkMeterKeys.has(customer.assignedBulkMeterId)));
+          }
+          return false;
+        });
+      }
+
+      if (startDate && endDate) {
+        const start = startDate.getTime();
+        const end = endDate.getTime();
+        filteredBills = filteredBills.filter(b => {
+          const billDate = new Date(b.billPeriodEndDate).getTime();
+          return billDate >= start && billDate <= end;
+        });
+      }
+
+      const aggregated: Record<string, any> = {};
+
+      filteredBills.forEach(bill => {
+        const period = bill.monthYear; // Typically YYYY-MM
+        let chargeGroup = "Unknown";
+        if (bill.individualCustomerId) {
+          const cust = allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId);
+          chargeGroup = cust?.customerType || "Unknown";
+        } else if (bill.CUSTOMERKEY) {
+          const bm = allBulkMeters.find(b => b.customerKeyNumber === bill.CUSTOMERKEY);
+          chargeGroup = bm?.chargeGroup || "Unknown";
+        }
+
+        const key = `${period}-${chargeGroup}`;
+        if (!aggregated[key]) {
+          aggregated[key] = {
+            "Period": period,
+            "Charge Group": chargeGroup,
+            "Base Water Charge": 0,
+            "Sewerage Charge": 0,
+            "Maintenance Fee": 0,
+            "Sanitation Fee": 0,
+            "Meter Rent": 0,
+            "Additional Fees": 0,
+            "VAT Amount": 0,
+            "Total Excl VAT": 0,
+            "Total Incl VAT": 0,
+            "Total Amount": 0,
+          };
+        }
+
+        const base = Number(bill.baseWaterCharge) || 0;
+        const sewerage = Number(bill.sewerageCharge) || 0;
+        const maint = Number(bill.maintenanceFee) || 0;
+        const sanit = Number(bill.sanitationFee) || 0;
+        const rent = Number(bill.meterRent) || 0;
+        const add = Number(bill.additionalFeesCharge) || 0;
+        const vat = Number(bill.vatAmount) || 0;
+        const total = Number(bill.TOTALBILLAMOUNT) || 0;
+
+        aggregated[key]["Base Water Charge"] += base;
+        aggregated[key]["Sewerage Charge"] += sewerage;
+        aggregated[key]["Maintenance Fee"] += maint;
+        aggregated[key]["Sanitation Fee"] += sanit;
+        aggregated[key]["Meter Rent"] += rent;
+        aggregated[key]["Additional Fees"] += add;
+        aggregated[key]["VAT Amount"] += vat;
+        aggregated[key]["Total Incl VAT"] += total;
+        aggregated[key]["Total Amount"] += total;
+        aggregated[key]["Total Excl VAT"] += (total - vat);
+      });
+
+      let resultRows = Object.values(aggregated);
+      if (filterChargeGroup && filterChargeGroup !== "all") {
+        resultRows = resultRows.filter(row => row["Charge Group"] === filterChargeGroup);
+      }
+
+      return resultRows.map(row => {
+        const result: any = { ...row };
+        Object.keys(result).forEach(k => {
+          if (typeof result[k] === 'number') {
+            result[k] = parseFloat(result[k].toFixed(2));
+          }
+        });
+        return result;
+      }).sort((a, b) => b.Period.localeCompare(a.Period));
+    },
+  },
+  {
+    id: "gl-finance-yearly",
+    name: "GL Finance Yearly Report (XLSX)",
+    description: "Yearly summary of billing components grouped by charge group.",
+    headers: [
+      "Period", "Charge Group", "Base Water Charge", "Sewerage Charge", "Maintenance Fee",
+      "Sanitation Fee", "Meter Rent", "Additional Fees", "VAT Amount", "Total Excl VAT", "Total Incl VAT", "Total Amount"
+    ],
+    getData: (filters: ReportFilters) => {
+      const { branchId, startDate, endDate, chargeGroup: filterChargeGroup } = filters;
+      const allBills = getBills();
+      const allCustomers = getCustomers();
+      const allBulkMeters = getBulkMeters();
+
+      const branchBulkMeterKeys = new Set(allBulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber));
+
+      let filteredBills = allBills;
+      if (branchId) {
+        filteredBills = filteredBills.filter(bill => {
+          if (bill.CUSTOMERKEY) return branchBulkMeterKeys.has(bill.CUSTOMERKEY);
+          if (bill.individualCustomerId) {
+            const customer = allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId);
+            return customer && (customer.branchId === branchId || (customer.assignedBulkMeterId && branchBulkMeterKeys.has(customer.assignedBulkMeterId)));
+          }
+          return false;
+        });
+      }
+
+      if (startDate && endDate) {
+        const start = startDate.getTime();
+        const end = endDate.getTime();
+        filteredBills = filteredBills.filter(b => {
+          const billDate = new Date(b.billPeriodEndDate).getTime();
+          return billDate >= start && billDate <= end;
+        });
+      }
+
+      const aggregated: Record<string, any> = {};
+
+      filteredBills.forEach(bill => {
+        const period = bill.monthYear.substring(0, 4); // YYYY
+        let chargeGroup = "Unknown";
+        if (bill.individualCustomerId) {
+          const cust = allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId);
+          chargeGroup = cust?.customerType || "Unknown";
+        } else if (bill.CUSTOMERKEY) {
+          const bm = allBulkMeters.find(b => b.customerKeyNumber === bill.CUSTOMERKEY);
+          chargeGroup = bm?.chargeGroup || "Unknown";
+        }
+
+        const key = `${period}-${chargeGroup}`;
+        if (!aggregated[key]) {
+          aggregated[key] = {
+            "Period": period,
+            "Charge Group": chargeGroup,
+            "Base Water Charge": 0,
+            "Sewerage Charge": 0,
+            "Maintenance Fee": 0,
+            "Sanitation Fee": 0,
+            "Meter Rent": 0,
+            "Additional Fees": 0,
+            "VAT Amount": 0,
+            "Total Excl VAT": 0,
+            "Total Incl VAT": 0,
+            "Total Amount": 0,
+          };
+        }
+
+        const base = Number(bill.baseWaterCharge) || 0;
+        const sewerage = Number(bill.sewerageCharge) || 0;
+        const maint = Number(bill.maintenanceFee) || 0;
+        const sanit = Number(bill.sanitationFee) || 0;
+        const rent = Number(bill.meterRent) || 0;
+        const add = Number(bill.additionalFeesCharge) || 0;
+        const vat = Number(bill.vatAmount) || 0;
+        const total = Number(bill.TOTALBILLAMOUNT) || 0;
+
+        aggregated[key]["Base Water Charge"] += base;
+        aggregated[key]["Sewerage Charge"] += sewerage;
+        aggregated[key]["Maintenance Fee"] += maint;
+        aggregated[key]["Sanitation Fee"] += sanit;
+        aggregated[key]["Meter Rent"] += rent;
+        aggregated[key]["Additional Fees"] += add;
+        aggregated[key]["VAT Amount"] += vat;
+        aggregated[key]["Total Incl VAT"] += total;
+        aggregated[key]["Total Amount"] += total;
+        aggregated[key]["Total Excl VAT"] += (total - vat);
+      });
+
+      let resultRows = Object.values(aggregated);
+      if (filterChargeGroup && filterChargeGroup !== "all") {
+        resultRows = resultRows.filter(row => row["Charge Group"] === filterChargeGroup);
+      }
+
+      return resultRows.map(row => {
+        const result: any = { ...row };
+        Object.keys(result).forEach(k => {
+          if (typeof result[k] === 'number') {
+            result[k] = parseFloat(result[k].toFixed(2));
+          }
+        });
+        return result;
+      }).sort((a, b) => b.Period.localeCompare(a.Period));
+    },
+  },
+  {
+    id: "monthly-bill-export-csv",
+    name: "Monthly Bill Export (CSV)",
+    description: "Export monthly bills in CSV format for external payment system integration.",
+    headers: [
+      "BILLKEY", "CUSTOMERKEY", "CUSTOMERNAME", "CUSTOMERTIN", "CUSTOMERBRANCH", "REASON",
+      "CURRREAD", "PREVREAD", "CONS", "TOTALBILLAMOUNT", "THISMONTHBILLAMT",
+      "OUTSTANDINGAMT", "PENALTYAMT", "VAT_AMOUNT", "DRACCTNO", "CRACCTNO"
+    ],
+    getData: (filters) => {
+      const { branchId, startDate, endDate } = filters;
+      let bills = getBills();
+      const customers = getCustomers();
+      const bulkMeters = getBulkMeters();
+      const branches = getBranches();
+
+      if (branchId) {
+        const bulkMetersInBranch = bulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber);
+        const customersInBranch = customers.filter(c => c.branchId === branchId).map(c => c.customerKeyNumber);
+        bills = bills.filter(b =>
+          (b.CUSTOMERKEY && bulkMetersInBranch.includes(b.CUSTOMERKEY)) ||
+          (b.individualCustomerId && customersInBranch.includes(b.individualCustomerId))
+        );
+      }
+      if (startDate && endDate) {
+        const start = startDate.getTime();
+        const end = endDate.getTime();
+        bills = bills.filter(b => {
+          try {
+            const billDate = new Date(b.billPeriodEndDate).getTime();
+            return billDate >= start && billDate <= end;
+          } catch { return false; }
+        });
+      }
+
+      return bills.map(bill => {
+        let customerName = "N/A";
+        let customerTin = "N/A";
+        let customerBranch = "N/A";
+
+        if (bill.individualCustomerId) {
+          const cust = customers.find(c => c.customerKeyNumber === bill.individualCustomerId);
+          if (cust) {
+            customerName = cust.name;
+            customerTin = cust.contractNumber || "N/A"; // Assuming contract number if TIN not explicit
+            const branch = branches.find(b => b.id === cust.branchId);
+            customerBranch = branch ? branch.name : "N/A";
+          }
+        } else if (bill.CUSTOMERKEY) {
+          const bm = bulkMeters.find(b => b.customerKeyNumber === bill.CUSTOMERKEY);
+          if (bm) {
+            customerName = bm.name;
+            customerTin = bm.contractNumber || "N/A";
+            const branch = branches.find(b => b.id === bm.branchId);
+            customerBranch = branch ? branch.name : "N/A";
+          }
+        }
+
+        // Generate BILLKEY explicitly for CSV export if missing, or use existing
+        let billKeyFormatted = bill.BILLKEY;
+        if (!billKeyFormatted) {
+          const idHex = (bill.id || "").replace(/-/g, '').substring(0, 8);
+          const idNumeric = parseInt(idHex, 16);
+          billKeyFormatted = isNaN(idNumeric) ? "BBPT-0000000000" : `BBPT-${String(idNumeric).padStart(10, '0')}`;
+        }
+
+        // Format REASON (monthYear) to M/D/YYYY (e.g., 2025-12 -> 12/1/2025)
+        let reasonFormatted = bill.monthYear;
+        if (bill.monthYear && bill.monthYear.includes('-')) {
+          const [year, month] = bill.monthYear.split('-');
+          reasonFormatted = `${parseInt(month)}/1/${year}`;
+        }
+
+        return {
+          "BILLKEY": billKeyFormatted,
+          "CUSTOMERKEY": bill.CUSTOMERKEY || bill.individualCustomerId,
+          "CUSTOMERNAME": customerName,
+          "CUSTOMERTIN": bill.CUSTOMERTIN || customerTin,
+          "CUSTOMERBRANCH": bill.CUSTOMERBRANCH || customerBranch,
+          "REASON": reasonFormatted,
+          "CURRREAD": bill.CURRREAD,
+          "PREVREAD": bill.PREVREAD,
+          "CONS": bill.CONS || 0,
+          "TOTALBILLAMOUNT": bill.TOTALBILLAMOUNT,
+          "THISMONTHBILLAMT": bill.THISMONTHBILLAMT || bill.TOTALBILLAMOUNT,
+          "OUTSTANDINGAMT": bill.OUTSTANDINGAMT || 0,
+          "PENALTYAMT": bill.PENALTYAMT || 0,
+          "VAT_AMOUNT": bill.vatAmount || 0,
+          "DRACCTNO": bill.DRACCTNO || "",
+          "CRACCTNO": bill.CRACCTNO || ""
+        };
+      });
+    },
+  },
 ];
 
 export default function AdminReportsPage() {
@@ -468,6 +787,7 @@ export default function AdminReportsPage() {
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [branches, setBranches] = React.useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = React.useState<string>("all");
+  const [selectedChargeGroup, setSelectedChargeGroup] = React.useState<string>("all");
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>(undefined);
   const [isLoading, setIsLoading] = React.useState(true);
   const [user, setUser] = React.useState<StaffMember | null>(null);
@@ -525,10 +845,11 @@ export default function AdminReportsPage() {
       branchId: selectedBranch === 'all' ? undefined : selectedBranch,
       startDate: dateRange?.from,
       endDate: dateRange?.to,
+      chargeGroup: selectedChargeGroup,
     });
 
     return data;
-  }, [selectedReport, selectedBranch, dateRange]);
+  }, [selectedReport, selectedBranch, dateRange, selectedChargeGroup]);
 
   const handleGenerateReport = async () => {
     if (!selectedReport) return;
@@ -547,9 +868,20 @@ export default function AdminReportsPage() {
       }
 
       const finalHeaders = Array.from(selectedColumns);
-      const xlsxBlob = arrayToXlsxBlob(data, finalHeaders);
-      const fileName = `${selectedReport.id}_${new Date().toISOString().split('T')[0]}.xlsx`;
-      downloadFile(xlsxBlob, fileName);
+
+      let blob: Blob;
+      let extension: string;
+
+      if (selectedReport.id === 'monthly-bill-export-csv') {
+        blob = arrayToCsvBlob(data, finalHeaders);
+        extension = 'csv';
+      } else {
+        blob = arrayToXlsxBlob(data, finalHeaders);
+        extension = 'xlsx';
+      }
+
+      const fileName = `${selectedReport.id}_${new Date().toISOString().split('T')[0]}.${extension}`;
+      downloadFile(blob, fileName);
       toast({ title: "Report Generated", description: `${selectedReport.name} has been downloaded.` });
     } catch (error) {
       console.error("Error generating report:", error);
@@ -741,6 +1073,24 @@ export default function AdminReportsPage() {
                             {branches.filter(b => !b || !b.id || String(b.id).trim() === '').length > 0 && (
                               <SelectItem value="__invalid_branch__" disabled>Invalid branch entry</SelectItem>
                             )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="charge-group-filter">Filter by Charge Group</Label>
+                        <Select
+                          value={selectedChargeGroup}
+                          onValueChange={setSelectedChargeGroup}
+                        >
+                          <SelectTrigger id="charge-group-filter">
+                            <SelectValue placeholder="Select a charge group" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Charge Groups</SelectItem>
+                            {customerTypes.map((type) => (
+                              <SelectItem key={type} value={type}>{type}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>

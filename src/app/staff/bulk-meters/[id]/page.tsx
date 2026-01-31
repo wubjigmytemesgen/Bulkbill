@@ -25,7 +25,7 @@ import type { BulkMeter } from "@/app/admin/bulk-meters/bulk-meter-types";
 import type { IndividualCustomer, IndividualCustomerStatus } from "@/app/admin/individual-customers/individual-customer-types";
 import type { DomainBulkMeterReading, DomainBill } from "@/lib/data-store";
 import { type CustomerType, type SewerageConnection, type PaymentStatus, type BillCalculationResult } from "@/lib/billing-calculations";
-import { calculateBillAction } from "@/lib/actions";
+import { calculateBillAction, closeBillingCycleAction } from "@/lib/actions";
 import { BulkMeterFormDialog, type BulkMeterFormValues } from "@/app/admin/bulk-meters/bulk-meter-form-dialog";
 import { IndividualCustomerFormDialog, type IndividualCustomerFormValues } from "@/app/admin/individual-customers/individual-customer-form-dialog";
 import { AddReadingDialog } from "@/components/add-reading-dialog";
@@ -37,6 +37,7 @@ import { Separator } from "@/components/ui/separator";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { arrayToXlsxBlob, downloadFile } from "@/lib/xlsx";
+import { getBillingPeriodStartDate, getBillingPeriodEndDate, calculateDueDate } from "@/lib/billing-config";
 
 interface UserAuth {
   id?: string;
@@ -151,12 +152,13 @@ export default function StaffBulkMeterDetailsPage() {
 
     let differenceUsage = bulkUsage - totalIndividualUsage;
 
-    if (differenceUsage < 0) {
+    // Apply Rule: If Difference Usage is 0, 1, or 2, bump to 3
+    if (differenceUsage < 3) {
       differenceUsage = 3;
     }
 
     const { data: differenceFullOrNull } = await calculateBillAction(differenceUsage, effectiveBulkMeterCustomerType, effectiveBulkMeterSewerageConnection, currentBulkMeter.meterSize, billingMonth, bulkUsage);
-    const differenceFull = differenceFullOrNull || { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, sewerageCharge: 0, meterRent: 0, vatAmount: 0 } as BillCalculationResult;
+    const differenceFull = differenceFullOrNull || { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, sewerageCharge: 0, meterRent: 0, vatAmount: 0, additionalFeesCharge: 0 } as BillCalculationResult;
     const differenceBill = differenceFull.totalBill;
     const differenceBillBreakdown = differenceFull;
 
@@ -171,21 +173,21 @@ export default function StaffBulkMeterDetailsPage() {
 
     if (billToRender) {
       const { data: historicalBillDetailsOrNull } = await calculateBillAction(billToRender.differenceUsage ?? 0, currentBulkMeter.chargeGroup as CustomerType || "Non-domestic", currentBulkMeter.sewerageConnection || "No", currentBulkMeter.meterSize, billToRender.monthYear);
-      const historicalBillDetails = historicalBillDetailsOrNull || { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, sewerageCharge: 0, meterRent: 0, vatAmount: 0, sewerageUsageM3: 0, baseWaterChargeUsageM3: 0 } as BillCalculationResult;
+      const historicalBillDetails = historicalBillDetailsOrNull || { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, sewerageCharge: 0, meterRent: 0, vatAmount: 0, additionalFeesCharge: 0 } as BillCalculationResult;
       finalBillCardDetails = {
-        prevReading: billToRender.previousReadingValue,
-        currReading: billToRender.currentReadingValue,
-        usage: billToRender.usageM3 ?? 0,
+        prevReading: billToRender.PREVREAD,
+        currReading: billToRender.CURRREAD,
+        usage: billToRender.CONS ?? 0,
         baseWaterCharge: historicalBillDetails.baseWaterCharge,
         maintenanceFee: historicalBillDetails.maintenanceFee,
         sanitationFee: historicalBillDetails.sanitationFee,
         sewerageCharge: historicalBillDetails.sewerageCharge,
         meterRent: historicalBillDetails.meterRent,
         vatAmount: historicalBillDetails.vatAmount,
-        totalDifferenceBill: billToRender.totalAmountDue,
+        totalDifferenceBill: billToRender.TOTALBILLAMOUNT,
         differenceUsage: billToRender.differenceUsage ?? 0,
         outstandingBill: billToRender.balanceCarriedForward ?? 0,
-        totalPayable: (billToRender.balanceCarriedForward ?? 0) + billToRender.totalAmountDue,
+        totalPayable: (billToRender.balanceCarriedForward ?? 0) + billToRender.TOTALBILLAMOUNT,
         paymentStatus: billToRender.paymentStatus,
         month: billToRender.monthYear,
       };
@@ -258,7 +260,7 @@ export default function StaffBulkMeterDetailsPage() {
           const branchMeters = currentGlobalMeters.filter(bm => bm.branchId === localBranchId).map(bm => ({ customerKeyNumber: bm.customerKeyNumber, name: bm.name }));
           setBranchBulkMetersForCustomerForm(branchMeters);
 
-          setMeterReadingHistory(getBulkMeterReadings().filter(r => r.bulkMeterId === foundBM.customerKeyNumber).sort((a, b) => {
+          setMeterReadingHistory(getBulkMeterReadings().filter(r => r.CUSTOMERKEY === foundBM.customerKeyNumber).sort((a, b) => {
             const dateA = new Date(a.readingDate).getTime();
             const dateB = new Date(b.readingDate).getTime();
             if (dateB !== dateA) {
@@ -268,7 +270,7 @@ export default function StaffBulkMeterDetailsPage() {
             const creationB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
             return creationB - creationA;
           }));
-          setBillingHistory(getBills().filter(b => b.bulkMeterId === foundBM.customerKeyNumber).sort((a, b) => {
+          setBillingHistory(getBills().filter(b => b.CUSTOMERKEY === foundBM.customerKeyNumber).sort((a, b) => {
             const dateA = new Date(a.billPeriodEndDate);
             const dateB = new Date(b.billPeriodEndDate);
             if (dateB.getTime() !== dateA.getTime()) {
@@ -310,7 +312,7 @@ export default function StaffBulkMeterDetailsPage() {
           const branchMeters = currentGlobalMeters.filter(bm => bm.branchId === localBranchId).map(bm => ({ customerKeyNumber: bm.customerKeyNumber, name: bm.name }));
           setBranchBulkMetersForCustomerForm(branchMeters);
 
-          setMeterReadingHistory(getBulkMeterReadings().filter(r => r.bulkMeterId === foundBM.customerKeyNumber).sort((a, b) => {
+          setMeterReadingHistory(getBulkMeterReadings().filter(r => r.CUSTOMERKEY === foundBM.customerKeyNumber).sort((a, b) => {
             const dateA = new Date(a.readingDate).getTime();
             const dateB = new Date(b.readingDate).getTime();
             if (dateB !== dateA) {
@@ -320,7 +322,7 @@ export default function StaffBulkMeterDetailsPage() {
             const creationB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
             return creationB - creationA;
           }));
-          setBillingHistory(getBills().filter(b => b.bulkMeterId === foundBM.customerKeyNumber).sort((a, b) => {
+          setBillingHistory(getBills().filter(b => b.CUSTOMERKEY === foundBM.customerKeyNumber).sort((a, b) => {
             const dateA = new Date(a.billPeriodEndDate);
             const dateB = new Date(b.billPeriodEndDate);
             if (dateB.getTime() !== dateA.getTime()) {
@@ -385,7 +387,7 @@ export default function StaffBulkMeterDetailsPage() {
     const readingDate = new Date();
 
     const result = await addBulkMeterReading({
-      bulkMeterId: bulkMeter.customerKeyNumber,
+      CUSTOMERKEY: bulkMeter.customerKeyNumber,
       readingValue: readingValue,
       readingDate: format(readingDate, "yyyy-MM-dd"),
       monthYear: format(readingDate, "yyyy-MM"),
@@ -455,13 +457,13 @@ export default function StaffBulkMeterDetailsPage() {
         });
         const temporaryBillForPrint: DomainBill = {
           id: `payslip-${bulkMeter.customerKeyNumber}-${Date.now()}`,
-          bulkMeterId: bulkMeter.customerKeyNumber,
+          CUSTOMERKEY: bulkMeter.customerKeyNumber,
           monthYear: bulkMeter.month || 'N/A',
-          billPeriodStartDate: bulkMeter.month ? `${bulkMeter.month}-01` : 'N/A',
-          billPeriodEndDate: bulkMeter.month ? format(lastDayOfMonth(parseISO(`${bulkMeter.month}-01`)), 'yyyy-MM-dd') : 'N/A',
-          previousReadingValue: bmPreviousReading,
-          currentReadingValue: bmCurrentReading,
-          usageM3: bulkUsage,
+          billPeriodStartDate: bulkMeter.month ? getBillingPeriodStartDate(bulkMeter.month) : 'N/A',
+          billPeriodEndDate: bulkMeter.month ? getBillingPeriodEndDate(bulkMeter.month) : 'N/A',
+          PREVREAD: bmPreviousReading,
+          CURRREAD: bmCurrentReading,
+          CONS: bulkUsage,
           differenceUsage: differenceUsage,
           baseWaterCharge: differenceBillBreakdown.baseWaterCharge,
           maintenanceFee: differenceBillBreakdown.maintenanceFee,
@@ -469,7 +471,7 @@ export default function StaffBulkMeterDetailsPage() {
           sewerageCharge: differenceBillBreakdown.sewerageCharge,
           meterRent: differenceBillBreakdown.meterRent,
           balanceCarriedForward: bulkMeter.outStandingbill,
-          totalAmountDue: differenceBill,
+          TOTALBILLAMOUNT: differenceBill,
           dueDate: 'N/A',
           paymentStatus: billCardDetails.paymentStatus,
           notes: "Current Live Pay Slip Generation (No History Available)",
@@ -599,7 +601,8 @@ export default function StaffBulkMeterDetailsPage() {
       const totalIndivUsage = associatedCustomers.reduce((sum, cust) => sum + ((Number(cust.currentReading ?? 0) - Number(cust.previousReading ?? 0)) || 0), 0);
       let differenceUsageForCycle = bmUsage - totalIndivUsage;
 
-      if (differenceUsageForCycle <= 2) {
+      // Apply Rule: Minimum 3m3 for difference billing
+      if (differenceUsageForCycle < 3) {
         differenceUsageForCycle = 3;
       }
 
@@ -621,22 +624,23 @@ export default function StaffBulkMeterDetailsPage() {
       const totalPayableForCycle = billForDifferenceUsage + balanceFromPreviousPeriods;
 
       const billDate = new Date();
-      const periodEndDate = lastDayOfMonth(parsedDate);
-      const dueDateObject = new Date(periodEndDate);
-      dueDateObject.setDate(dueDateObject.getDate() + 15);
+      // Use centralized billing config for period dates
+      const periodStartDate = getBillingPeriodStartDate(parsedMonth);
+      const periodEndDate = getBillingPeriodEndDate(parsedMonth);
+      const dueDateObject = calculateDueDate(periodEndDate);
 
       const billToSave: Omit<DomainBill, 'id' | 'createdAt' | 'updatedAt'> = {
-        bulkMeterId: bulkMeter.customerKeyNumber,
-        billPeriodStartDate: `${parsedMonth}-01`,
-        billPeriodEndDate: format(periodEndDate, 'yyyy-MM-dd'),
+        CUSTOMERKEY: bulkMeter.customerKeyNumber,
+        billPeriodStartDate: periodStartDate,
+        billPeriodEndDate: periodEndDate,
         monthYear: parsedMonth,
-        previousReadingValue: prev,
-        currentReadingValue: curr,
-        usageM3: bmUsage,
+        PREVREAD: prev,
+        CURRREAD: curr,
+        CONS: bmUsage,
         differenceUsage: differenceUsageForCycle,
         ...differenceBillBreakdownForCycle,
         balanceCarriedForward: balanceFromPreviousPeriods,
-        totalAmountDue: billForDifferenceUsage,
+        TOTALBILLAMOUNT: billForDifferenceUsage,
         dueDate: format(dueDateObject, 'yyyy-MM-dd'),
         paymentStatus: carryBalance ? 'Unpaid' : 'Paid',
         notes: `Bill generated on ${format(billDate, 'PP')}. Total payable was ${totalPayableForCycle.toFixed(2)}.`,
@@ -649,27 +653,35 @@ export default function StaffBulkMeterDetailsPage() {
       }
 
       const newOutstandingBalance = carryBalance ? totalPayableForCycle : 0;
-      const updatePayload: Partial<Omit<BulkMeter, 'customerKeyNumber'>> = {
+      const meterUpdateData = {
+        customerKeyNumber: bulkMeter.customerKeyNumber,
         previousReading: curr,
+        currentReading: curr, // Keep current reading as starting point for next cycle
         outStandingbill: newOutstandingBalance,
         paymentStatus: carryBalance ? 'Unpaid' : 'Paid',
       };
 
-      const updateResult = await updateBulkMeterInStore(bulkMeter.customerKeyNumber, updatePayload);
-      if (updateResult.success && updateResult.data) {
+      const res = await closeBillingCycleAction({
+        bill: billToSave as any,
+        meterUpdate: meterUpdateData
+      });
+
+      if (res.data) {
         toast({ title: "Billing Cycle Closed", description: carryBalance ? `Total of ETB ${totalPayableForCycle.toFixed(2)} carried forward as new outstanding balance.` : "Bill marked as paid and new cycle started." });
         // Refresh local state to reflect update
-        setBulkMeter({ ...bulkMeter, ...updateResult.data });
-        // Optionally refresh billing history to include the newly created bill
-        setBillingHistory([addBillResult.data, ...billingHistory]);
+        if (res.data.meter) {
+          setBulkMeter({ ...bulkMeter, ...res.data.meter });
+        }
+        // Refresh billing history to include the newly created bill
+        if (res.data.bill) {
+          setBillingHistory([res.data.bill as any, ...billingHistory]);
+        }
       } else {
-        // rollback created bill
-        await removeBill(addBillResult.data.id);
-        toast({ variant: "destructive", title: "Update Failed", description: "Could not update the meter. The new bill has been rolled back." });
+        toast({ variant: "destructive", title: "Update Failed", description: res.error?.message || "Could not update the meter." });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error during end of cycle process:", error);
-      toast({ variant: "destructive", title: "Processing Error", description: "An unexpected error occurred while closing the billing cycle." });
+      toast({ variant: "destructive", title: "Processing Error", description: error.message || "An unexpected error occurred while closing the billing cycle." });
     } finally {
       setIsProcessingCycle(false);
     }
@@ -933,35 +945,58 @@ export default function StaffBulkMeterDetailsPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                {meterReadingHistory.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Reading Value</TableHead>
-                        <TableHead>Notes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {paginatedReadingHistory.map(reading => (
-                        <TableRow key={reading.id}>
-                          <TableCell>{format(
-                            Object.prototype.toString.call(reading.readingDate) === '[object Date]'
-                              ? (reading.readingDate as unknown as Date)
-                              : parseISO(reading.readingDate as string),
-                            "PP"
-                          )}</TableCell>
-                          <TableCell className="text-right">{reading.readingValue.toFixed(2)}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{reading.notes}</TableCell>
+              {meterReadingHistory.length === 0 ? (
+                <p className="text-muted-foreground text-sm text-center py-6 italic">No historical readings found for this meter.</p>
+              ) : (
+                <>
+                  {/* Reading History Table - Desktop */}
+                  <div className="overflow-x-auto hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead className="text-right">Reading Value</TableHead>
+                          <TableHead>Notes</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <p className="text-muted-foreground text-sm text-center py-4">No historical readings found.</p>
-                )}
-              </div>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedReadingHistory.map(reading => (
+                          <TableRow key={reading.id}>
+                            <TableCell>{format(
+                              Object.prototype.toString.call(reading.readingDate) === '[object Date]'
+                                ? (reading.readingDate as unknown as Date)
+                                : parseISO(reading.readingDate as string),
+                              "PP"
+                            )}</TableCell>
+                            <TableCell className="text-right">{reading.readingValue.toFixed(2)}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{reading.notes}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Reading History Cards - Mobile */}
+                  <div className="grid grid-cols-1 gap-2 p-4 md:hidden">
+                    {paginatedReadingHistory.map(reading => (
+                      <div key={reading.id} className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-muted-foreground uppercase">
+                            {format(
+                              Object.prototype.toString.call(reading.readingDate) === '[object Date]'
+                                ? (reading.readingDate as unknown as Date)
+                                : parseISO(reading.readingDate as string),
+                              "PP"
+                            )}
+                          </p>
+                          <p className="text-sm font-medium">{reading.readingValue.toFixed(2)} m³</p>
+                        </div>
+                        {reading.notes && <p className="text-[10px] text-muted-foreground italic truncate max-w-[150px]">{reading.notes}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </CardContent>
             {meterReadingHistory.length > 0 && (
               <TablePagination
@@ -984,7 +1019,7 @@ export default function StaffBulkMeterDetailsPage() {
               {/* Mobile View: List of Cards */}
               <div className="md:hidden">
                 {billingHistory.length > 0 ? paginatedBillingHistory.map((bill, _billIndex) => {
-                  const usageForBill = bill.usageM3 ?? (bill.currentReadingValue - bill.previousReadingValue);
+                  const usageForBill = bill.CONS ?? (bill.CURRREAD - bill.PREVREAD);
                   const displayUsage = !isNaN(usageForBill) ? usageForBill.toFixed(2) : "N/A";
                   return (
                     <div key={bill.id ?? `${bill.monthYear}-${String(bill.billPeriodEndDate)}-${_billIndex}`} className="border-b p-4">
@@ -1005,8 +1040,8 @@ export default function StaffBulkMeterDetailsPage() {
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-sm">
                         <p>Usage:</p><p className="text-right font-medium">{displayUsage} m³</p>
                         <p>Outstanding:</p><p className="text-right font-medium">{(bill.balanceCarriedForward ?? 0).toFixed(2)} ETB</p>
-                        <p>Current Bill:</p><p className="text-right font-medium">{bill.totalAmountDue.toFixed(2)} ETB</p>
-                        <p className="font-bold">Total Payable:</p><p className="text-right font-bold">{((bill.balanceCarriedForward ?? 0) + bill.totalAmountDue).toFixed(2)} ETB</p>
+                        <p>Current Bill:</p><p className="text-right font-medium">{bill.TOTALBILLAMOUNT.toFixed(2)} ETB</p>
+                        <p className="font-bold">Total Payable:</p><p className="text-right font-bold">{((bill.balanceCarriedForward ?? 0) + bill.TOTALBILLAMOUNT).toFixed(2)} ETB</p>
                       </div>
                       <div className="mt-2">
                         <Badge variant={bill.paymentStatus === 'Paid' ? 'default' : 'destructive'}>{bill.paymentStatus}</Badge>
@@ -1018,7 +1053,7 @@ export default function StaffBulkMeterDetailsPage() {
 
               {/* Desktop View: Table */}
               <div className="overflow-x-auto hidden md:block">{billingHistory.length > 0 ? (<Table><TableHeader><TableRow><TableHead>Month</TableHead><TableHead>Date Billed</TableHead><TableHead className="text-right">Prev. Reading</TableHead><TableHead className="text-right">Curr. Reading</TableHead><TableHead>Usage (m³)</TableHead><TableHead>Diff. Usage (m³)</TableHead><TableHead className="text-right">Outstanding (ETB)</TableHead><TableHead className="text-right">Current Bill (ETB)</TableHead><TableHead className="text-right">Total Payable (ETB)</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{paginatedBillingHistory.map((bill, _billIndex) => {
-                const usageForBill = bill.usageM3 ?? (bill.currentReadingValue - bill.previousReadingValue);
+                const usageForBill = bill.CONS ?? (bill.CURRREAD - bill.PREVREAD);
                 const displayUsage = !isNaN(usageForBill) ? usageForBill.toFixed(2) : "N/A";
                 const diffUsageValue = bill.differenceUsage ?? (usageForBill - (associatedCustomers.reduce((sum, cust) => sum + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0)));
                 const displayDiffUsage = !isNaN(diffUsageValue) ? diffUsageValue.toFixed(2) : 'N/A';
@@ -1031,13 +1066,13 @@ export default function StaffBulkMeterDetailsPage() {
                         : parseISO(bill.billPeriodEndDate as string),
                       "PP"
                     )}</TableCell>
-                    <TableCell className="text-right">{bill.previousReadingValue.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{bill.currentReadingValue.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{bill.PREVREAD.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{bill.CURRREAD.toFixed(2)}</TableCell>
                     <TableCell>{displayUsage}</TableCell>
                     <TableCell className={cn("text-right", diffUsageValue < 0 ? "text-amber-600" : "text-green-600")}>{displayDiffUsage}</TableCell>
                     <TableCell className="text-right">{bill.balanceCarriedForward?.toFixed(2) ?? '0.00'}</TableCell>
-                    <TableCell className="text-right font-medium">{bill.totalAmountDue.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-bold">{((bill.balanceCarriedForward ?? 0) + bill.totalAmountDue).toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-medium">{bill.TOTALBILLAMOUNT.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-bold">{((bill.balanceCarriedForward ?? 0) + bill.TOTALBILLAMOUNT).toFixed(2)}</TableCell>
                     <TableCell><Badge variant={bill.paymentStatus === 'Paid' ? 'default' : 'destructive'}>{bill.paymentStatus}</Badge></TableCell>
                     <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handlePrintSlip(bill)}><Printer className="mr-2 h-4 w-4" />Print/Export Bill</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteBillingRecord(bill)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Record</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell>
                   </TableRow>
@@ -1061,7 +1096,111 @@ export default function StaffBulkMeterDetailsPage() {
 
           <Card className="shadow-lg non-printable">
             <CardHeader><CardTitle className="flex items-center gap-2"><UsersIcon className="h-5 w-5 text-primary" />Associated Individual Customers</CardTitle><CardDescription>List of individual customers connected to this bulk meter ({associatedCustomers.length} found).</CardDescription></CardHeader>
-            <CardContent>{paginatedCustomers.length === 0 && associatedCustomers.length > 0 ? (<div className="text-center text-muted-foreground py-4">No individual customers on this page.</div>) : associatedCustomers.length === 0 ? (<div className="text-center text-muted-foreground py-4">No individual customers are currently associated with this bulk meter.</div>) : (<div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Customer Name</TableHead><TableHead>Meter No.</TableHead><TableHead>Usage (m³)</TableHead><TableHead>Bill (ETB)</TableHead><TableHead>Pay Status</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{paginatedCustomers.map((customer) => { const usage = customer.currentReading - customer.previousReading; return (<TableRow key={customer.customerKeyNumber}><TableCell className="font-medium">{customer.name}</TableCell><TableCell>{customer.meterNumber}</TableCell><TableCell>{usage.toFixed(2)}</TableCell><TableCell>{customer.calculatedBill.toFixed(2)}</TableCell><TableCell><Badge variant={customer.paymentStatus === 'Paid' ? 'default' : customer.paymentStatus === 'Unpaid' ? 'destructive' : 'secondary'} className={cn(customer.paymentStatus === 'Paid' && "bg-green-500 hover:bg-green-600", customer.paymentStatus === 'Pending' && "bg-yellow-500 hover:bg-yellow-600")}>{customer.paymentStatus === 'Paid' ? <CheckCircle className="mr-1 h-3.5 w-3.5" /> : customer.paymentStatus === 'Unpaid' ? <XCircle className="mr-1 h-3.5 w-3.5" /> : <Clock className="mr-1 h-3.5 w-3.5" />}{customer.paymentStatus}</Badge></TableCell><TableCell><Badge variant={customer.status === 'Active' ? 'default' : 'destructive'}>{customer.status}</Badge></TableCell><TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handleEditCustomer(customer)}><Edit className="mr-2 h-4 w-4" />Edit Customer</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteCustomer(customer)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Customer</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>); })}</TableBody></Table></div>)}</CardContent>
+            <CardContent>
+              {associatedCustomers.length === 0 ? (
+                <div className="text-center text-muted-foreground py-4 italic">No individual customers are currently associated with this bulk meter.</div>
+              ) : (
+                <>
+                  {/* Desktop Table View */}
+                  <div className="overflow-x-auto hidden lg:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Customer Name</TableHead>
+                          <TableHead>Meter No.</TableHead>
+                          <TableHead>Usage (m³)</TableHead>
+                          <TableHead>Bill (ETB)</TableHead>
+                          <TableHead>Pay Status</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedCustomers.map((customer) => {
+                          const usage = customer.currentReading - customer.previousReading;
+                          return (
+                            <TableRow key={customer.customerKeyNumber}>
+                              <TableCell className="font-medium">{customer.name}</TableCell>
+                              <TableCell>{customer.meterNumber}</TableCell>
+                              <TableCell>{usage.toFixed(2)}</TableCell>
+                              <TableCell>{customer.calculatedBill.toFixed(2)}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={customer.paymentStatus === 'Paid' ? 'default' : customer.paymentStatus === 'Unpaid' ? 'destructive' : 'secondary'}
+                                  className={cn(
+                                    customer.paymentStatus === 'Paid' && "bg-green-500 hover:bg-green-600",
+                                    customer.paymentStatus === 'Pending' && "bg-yellow-500 hover:bg-yellow-600"
+                                  )}
+                                >
+                                  {customer.paymentStatus === 'Paid' ? <CheckCircle className="mr-1 h-3.5 w-3.5" /> : customer.paymentStatus === 'Unpaid' ? <XCircle className="mr-1 h-3.5 w-3.5" /> : <Clock className="mr-1 h-3.5 w-3.5" />}
+                                  {customer.paymentStatus}
+                                </Badge>
+                              </TableCell>
+                              <TableCell><Badge variant={customer.status === 'Active' ? 'default' : 'destructive'}>{customer.status}</Badge></TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                      <span className="sr-only">Open menu</span>
+                                      <Menu className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                    <DropdownMenuItem onClick={() => handleEditCustomer(customer)}><Edit className="mr-2 h-4 w-4" />Edit Customer</DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => handleDeleteCustomer(customer)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Customer</DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Mobile Card View */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:hidden gap-4 mt-2">
+                    {paginatedCustomers.map((customer) => {
+                      const usage = customer.currentReading - customer.previousReading;
+                      return (
+                        <Card key={customer.customerKeyNumber} className="border shadow-sm">
+                          <CardContent className="p-4 space-y-3">
+                            <div className="flex justify-between items-start">
+                              <div className="font-bold text-base truncate pr-2">{customer.name}</div>
+                              <div className="flex shrink-0 gap-1">
+                                <Badge variant={customer.status === 'Active' ? 'default' : 'destructive'} className="text-[10px] px-1.5 h-5">{customer.status}</Badge>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-7 w-7 p-0"><Menu className="h-4 w-4" /></Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handleEditCustomer(customer)}><Edit className="mr-2 h-4 w-4" />Edit</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleDeleteCustomer(customer)}><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-y-2 text-xs">
+                              <div><span className="text-muted-foreground uppercase font-semibold">Meter No:</span> {customer.meterNumber}</div>
+                              <div>
+                                <span className="text-muted-foreground uppercase font-semibold">Pay Status:</span>
+                                <Badge variant={customer.paymentStatus === 'Paid' ? 'default' : 'destructive'} className="ml-1 text-[10px] h-4">
+                                  {customer.paymentStatus}
+                                </Badge>
+                              </div>
+                              <div><span className="text-muted-foreground uppercase font-semibold">Usage:</span> {usage.toFixed(2)} m³</div>
+                              <div><span className="text-muted-foreground uppercase font-semibold">Bill:</span> ETB {customer.calculatedBill.toFixed(2)}</div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </CardContent>
             {associatedCustomers.length > 0 && (
               <TablePagination
                 count={associatedCustomers.length}

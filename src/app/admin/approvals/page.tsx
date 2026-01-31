@@ -4,8 +4,8 @@
 import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  getCustomers, 
+import {
+  getCustomers,
   subscribeToCustomers,
   initializeCustomers,
   approveCustomer,
@@ -42,7 +42,7 @@ export default function ApprovalsPage() {
   const [bulkMeters, setBulkMeters] = React.useState<BulkMeter[]>([]);
   const [branches, setBranches] = React.useState<Branch[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  
+
   const [actionType, setActionType] = React.useState<'approve' | 'reject' | null>(null);
   const [selectedEntity, setSelectedEntity] = React.useState<IndividualCustomer | BulkMeter | null>(null);
 
@@ -98,7 +98,7 @@ export default function ApprovalsPage() {
     }
     return allPending;
   }, [customers, currentUser]);
-  
+
   const pendingBulkMeters = React.useMemo(() => {
     const allPending = bulkMeters.filter(bm => bm.status === 'Pending Approval');
     if (currentUser?.role.toLowerCase() === 'staff management' && currentUser.branchId) {
@@ -120,12 +120,12 @@ export default function ApprovalsPage() {
       bulkMeterPage * bulkMeterRowsPerPage + bulkMeterRowsPerPage
     );
   }, [pendingBulkMeters, bulkMeterPage, bulkMeterRowsPerPage]);
-  
+
   const handleApproveClick = (entity: IndividualCustomer | BulkMeter) => {
     setSelectedEntity(entity);
     setActionType('approve');
   };
-  
+
   const handleRejectClick = (entity: IndividualCustomer | BulkMeter) => {
     setSelectedEntity(entity);
     setActionType('reject');
@@ -154,19 +154,19 @@ export default function ApprovalsPage() {
 
   const confirmAction = async () => {
     if (!selectedEntity || !actionType || !currentUser) return;
-    
+
     let result;
     const entityKey = 'customerKeyNumber' in selectedEntity ? selectedEntity.customerKeyNumber : '';
     const isCustomer = 'customerType' in selectedEntity;
 
     if (actionType === 'approve') {
-        result = isCustomer 
-            ? await approveCustomer(entityKey, currentUser.id) 
-            : await approveBulkMeter(entityKey, currentUser.id);
+      result = isCustomer
+        ? await approveCustomer(entityKey, currentUser.id)
+        : await approveBulkMeter(entityKey, currentUser.id);
     } else {
-        result = isCustomer 
-            ? await rejectCustomer(entityKey, currentUser.id)
-            : await rejectBulkMeter(entityKey, currentUser.id);
+      result = isCustomer
+        ? await rejectCustomer(entityKey, currentUser.id)
+        : await rejectBulkMeter(entityKey, currentUser.id);
     }
 
     if (result.success) {
@@ -181,7 +181,7 @@ export default function ApprovalsPage() {
         description: result.message || "An unexpected error occurred."
       });
     }
-    
+
     // Close dialog
     setSelectedEntity(null);
     setActionType(null);
@@ -222,7 +222,7 @@ export default function ApprovalsPage() {
       setBulkMeterToEdit(null);
     }
   };
-  
+
   const hasApprovalPermission = hasPermission('customers_approve') || hasPermission('bulk_meters_approve');
 
   if (!hasApprovalPermission) {
@@ -246,7 +246,7 @@ export default function ApprovalsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <UserCheck className="h-8 w-8 text-primary"/>
+        <UserCheck className="h-8 w-8 text-primary" />
         <div>
           <h1 className="text-2xl md:text-3xl font-bold">Approvals</h1>
           <p className="text-muted-foreground">Review and approve or amend new registrations.</p>
@@ -262,18 +262,18 @@ export default function ApprovalsPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-             <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">
-                Loading pending customers...
-             </div>
+            <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">
+              Loading pending customers...
+            </div>
           ) : pendingCustomers.length === 0 ? (
-             <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
-                <ShieldCheck className="mx-auto h-12 w-12 text-green-500 mb-4" />
-                <h3 className="text-lg font-semibold">All Clear!</h3>
-                <p className="text-muted-foreground mt-1">There are no pending customer approvals at this time.</p>
-             </div>
+            <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
+              <ShieldCheck className="mx-auto h-12 w-12 text-green-500 mb-4" />
+              <h3 className="text-lg font-semibold">All Clear!</h3>
+              <p className="text-muted-foreground mt-1">There are no pending customer approvals at this time.</p>
+            </div>
           ) : (
-            <IndividualCustomerTable 
-              data={paginatedCustomers} 
+            <IndividualCustomerTable
+              data={paginatedCustomers}
               branches={branches}
               onEdit={handleOpenEditCustomer}
               onApprove={handleApproveClick}
@@ -296,7 +296,7 @@ export default function ApprovalsPage() {
           />
         )}
       </Card>
-      
+
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Pending Bulk Meters</CardTitle>
@@ -306,18 +306,18 @@ export default function ApprovalsPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-             <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">
-                Loading pending bulk meters...
-             </div>
+            <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">
+              Loading pending bulk meters...
+            </div>
           ) : pendingBulkMeters.length === 0 ? (
-             <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
-                <ShieldCheck className="mx-auto h-12 w-12 text-green-500 mb-4" />
-                <h3 className="text-lg font-semibold">All Clear!</h3>
-                <p className="text-muted-foreground mt-1">There are no pending bulk meter approvals at this time.</p>
-             </div>
+            <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
+              <ShieldCheck className="mx-auto h-12 w-12 text-green-500 mb-4" />
+              <h3 className="text-lg font-semibold">All Clear!</h3>
+              <p className="text-muted-foreground mt-1">There are no pending bulk meter approvals at this time.</p>
+            </div>
           ) : (
             <BulkMeterTable
-              data={paginatedBulkMeters} 
+              data={paginatedBulkMeters}
               branches={branches}
               onEdit={handleOpenEditBulkMeter}
               onApprove={handleApproveClick}
@@ -351,9 +351,9 @@ export default function ApprovalsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setSelectedEntity(null)}>Cancel</AlertDialogCancel>
-            <Button 
-                onClick={confirmAction}
-                variant={actionType === 'approve' ? 'default' : 'destructive'}
+            <Button
+              onClick={confirmAction}
+              variant={actionType === 'approve' ? 'default' : 'destructive'}
             >
               {actionType === 'approve' ? <Check className="mr-2 h-4 w-4" /> : <FileEdit className="mr-2 h-4 w-4" />}
               {dialogButtonText}
@@ -382,4 +382,3 @@ export default function ApprovalsPage() {
   );
 }
 
-    

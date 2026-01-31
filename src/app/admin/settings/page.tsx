@@ -12,6 +12,7 @@ import { Save, AlertTriangle, Info, DollarSign, Bell, FileDown, Lock } from "luc
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Alert, AlertTitle } from "@/components/ui/alert";
+import { getDefaultBillingCycleDayString } from "@/lib/billing-config";
 
 const APP_NAME_KEY = "aawsa-app-name";
 const CURRENCY_KEY = "aawsa-default-currency";
@@ -31,14 +32,14 @@ const billingCycleDays = Array.from({ length: 28 }, (_, i) => (i + 1).toString()
 export default function AdminSettingsPage() {
   const { hasPermission } = usePermissions();
   const { toast } = useToast();
-  
+
   // State for existing settings
   const [appName, setAppName] = React.useState("AAWSA Billing Portal");
   const [defaultCurrency, setDefaultCurrency] = React.useState("ETB");
   const [enableDarkMode, setEnableDarkMode] = React.useState(false);
-  const [billingCycleDay, setBillingCycleDay] = React.useState("1");
+  const [billingCycleDay, setBillingCycleDay] = React.useState(getDefaultBillingCycleDayString());
   const [enableOverdueReminders, setEnableOverdueReminders] = React.useState(false);
-  
+
   // State for new settings
   const [notifyOnNewBill, setNotifyOnNewBill] = React.useState(true);
   const [notifyOnOverdue, setNotifyOnOverdue] = React.useState(true);
@@ -62,7 +63,7 @@ export default function AdminSettingsPage() {
     if (storedDarkMode) setEnableDarkMode(storedDarkMode === "true");
     if (storedBillingCycleDay) setBillingCycleDay(storedBillingCycleDay);
     if (storedEnableOverdueReminders) setEnableOverdueReminders(storedEnableOverdueReminders === "true");
-    
+
     // Load new settings
     const storedNotifyNewBill = localStorage.getItem(NOTIFY_NEW_BILL_KEY);
     const storedNotifyOverdue = localStorage.getItem(NOTIFY_OVERDUE_KEY);
@@ -73,7 +74,7 @@ export default function AdminSettingsPage() {
     if (storedNotifyOverdue !== null) setNotifyOnOverdue(storedNotifyOverdue === 'true');
     if (storedExportFormat) setExportFormat(storedExportFormat);
     if (storedExportPrefix) setExportPrefix(storedExportPrefix);
-    
+
     if (typeof document !== 'undefined') {
       if (storedDarkMode === "true") {
         document.documentElement.classList.add('dark');
@@ -98,7 +99,7 @@ export default function AdminSettingsPage() {
     localStorage.setItem(DARK_MODE_KEY, String(enableDarkMode));
     localStorage.setItem(BILLING_CYCLE_DAY_KEY, billingCycleDay);
     localStorage.setItem(ENABLE_OVERDUE_REMINDERS_KEY, String(enableOverdueReminders));
-    
+
     // Save new settings
     localStorage.setItem(NOTIFY_NEW_BILL_KEY, String(notifyOnNewBill));
     localStorage.setItem(NOTIFY_OVERDUE_KEY, String(notifyOnOverdue));
@@ -111,33 +112,33 @@ export default function AdminSettingsPage() {
     });
 
     if (typeof document !== 'undefined') {
-        document.title = appName;
-        if (enableDarkMode) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
+      document.title = appName;
+      if (enableDarkMode) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
     }
   };
-  
+
   if (!isMounted) {
-    return null; 
+    return null;
   }
 
   if (!hasPermission('settings_view')) {
-      return (
-        <Alert variant="destructive">
-            <Lock className="h-4 w-4" />
-            <AlertTitle>Access Denied</AlertTitle>
-            <CardDescription>You do not have the required permissions to view this page.</CardDescription>
-        </Alert>
-      );
+    return (
+      <Alert variant="destructive">
+        <Lock className="h-4 w-4" />
+        <AlertTitle>Access Denied</AlertTitle>
+        <CardDescription>You do not have the required permissions to view this page.</CardDescription>
+      </Alert>
+    );
   }
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl md:text-3xl font-bold">Application Settings</h1>
-      
+
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>General Settings</CardTitle>
@@ -146,8 +147,8 @@ export default function AdminSettingsPage() {
         <CardContent className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="app-name">Application Name</Label>
-            <Input 
-              id="app-name" 
+            <Input
+              id="app-name"
               value={appName}
               onChange={(e) => setAppName(e.target.value)}
               disabled={!canUpdateSettings}
@@ -155,16 +156,16 @@ export default function AdminSettingsPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="currency">Default Currency</Label>
-            <Input 
-              id="currency" 
+            <Input
+              id="currency"
               value={defaultCurrency}
               onChange={(e) => setDefaultCurrency(e.target.value)}
               disabled={!canUpdateSettings}
             />
           </div>
           <div className="flex items-center space-x-2">
-            <Checkbox 
-              id="dark-mode" 
+            <Checkbox
+              id="dark-mode"
               checked={enableDarkMode}
               onCheckedChange={(checked) => setEnableDarkMode(checked as boolean)}
               disabled={!canUpdateSettings}
@@ -195,13 +196,13 @@ export default function AdminSettingsPage() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              The day of the month when new bills are generated.
+              The day of the month when the billing cycle starts (e.g., 16th of each month).
             </p>
           </div>
 
           <div className="flex items-center space-x-2">
-            <Checkbox 
-              id="overdue-reminders" 
+            <Checkbox
+              id="overdue-reminders"
               checked={enableOverdueReminders}
               onCheckedChange={(checked) => setEnableOverdueReminders(checked as boolean)}
               disabled={!canUpdateSettings}
@@ -210,7 +211,7 @@ export default function AdminSettingsPage() {
               Enable Automatic Overdue Reminders
             </Label>
           </div>
-          
+
           <div className="p-4 border rounded-md bg-muted/20">
             <div className="flex items-center gap-2">
               <DollarSign className="h-5 w-5 text-primary" />
@@ -222,84 +223,84 @@ export default function AdminSettingsPage() {
           </div>
         </CardContent>
       </Card>
-      
+
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5"/> Notification Preferences</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" /> Notification Preferences</CardTitle>
           <CardDescription>Configure when and how to send notifications.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center space-x-2">
-              <Checkbox 
-                id="notify-new-bill" 
-                checked={notifyOnNewBill}
-                onCheckedChange={(checked) => setNotifyOnNewBill(checked as boolean)}
-                disabled={!canUpdateSettings}
-              />
-              <Label htmlFor="notify-new-bill" className="font-normal">
-                Send email notification when a new bill is generated.
-              </Label>
-            </div>
-             <div className="flex items-center space-x-2">
-              <Checkbox 
-                id="notify-overdue" 
-                checked={notifyOnOverdue}
-                onCheckedChange={(checked) => setNotifyOnOverdue(checked as boolean)}
-                disabled={!canUpdateSettings}
-              />
-              <Label htmlFor="notify-overdue" className="font-normal">
-                Send email notification for overdue payments.
-              </Label>
-            </div>
+            <Checkbox
+              id="notify-new-bill"
+              checked={notifyOnNewBill}
+              onCheckedChange={(checked) => setNotifyOnNewBill(checked as boolean)}
+              disabled={!canUpdateSettings}
+            />
+            <Label htmlFor="notify-new-bill" className="font-normal">
+              Send email notification when a new bill is generated.
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="notify-overdue"
+              checked={notifyOnOverdue}
+              onCheckedChange={(checked) => setNotifyOnOverdue(checked as boolean)}
+              disabled={!canUpdateSettings}
+            />
+            <Label htmlFor="notify-overdue" className="font-normal">
+              Send email notification for overdue payments.
+            </Label>
+          </div>
         </CardContent>
       </Card>
-      
+
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><FileDown className="h-5 w-5"/> Data Export Configurations</CardTitle>
+          <CardTitle className="flex items-center gap-2"><FileDown className="h-5 w-5" /> Data Export Configurations</CardTitle>
           <CardDescription>Set default options for data exports.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="export-format">Default Export Format</Label>
-              <Select value={exportFormat} onValueChange={setExportFormat} disabled={!canUpdateSettings}>
-                <SelectTrigger id="export-format" className="w-full md:w-[200px]">
-                  <SelectValue placeholder="Select format" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="xlsx">Excel (.xlsx)</SelectItem>
-                  <SelectItem value="csv">CSV (.csv)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-             <div className="space-y-2">
-              <Label htmlFor="export-prefix">Default Export Filename Prefix</Label>
-              <Input 
-                id="export-prefix" 
-                value={exportPrefix}
-                onChange={(e) => setExportPrefix(e.target.value)} 
-                className="w-full md:w-[300px]"
-                disabled={!canUpdateSettings}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="export-format">Default Export Format</Label>
+            <Select value={exportFormat} onValueChange={setExportFormat} disabled={!canUpdateSettings}>
+              <SelectTrigger id="export-format" className="w-full md:w-[200px]">
+                <SelectValue placeholder="Select format" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="xlsx">Excel (.xlsx)</SelectItem>
+                <SelectItem value="csv">CSV (.csv)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="export-prefix">Default Export Filename Prefix</Label>
+            <Input
+              id="export-prefix"
+              value={exportPrefix}
+              onChange={(e) => setExportPrefix(e.target.value)}
+              className="w-full md:w-[300px]"
+              disabled={!canUpdateSettings}
+            />
+          </div>
         </CardContent>
       </Card>
 
 
       <Card className="shadow-lg">
         <CardHeader>
-            <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                <CardTitle className="text-amber-700 dark:text-amber-300">Advanced Settings (Coming Soon)</CardTitle>
-            </div>
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <CardTitle className="text-amber-700 dark:text-amber-300">Advanced Settings (Coming Soon)</CardTitle>
+          </div>
         </CardHeader>
         <CardContent>
-            <p className="text-sm text-amber-600 dark:text-amber-400">
-              Late fee policies will be available here in future updates.
-            </p>
+          <p className="text-sm text-amber-600 dark:text-amber-400">
+            Late fee policies will be available here in future updates.
+          </p>
         </CardContent>
       </Card>
-      
+
       {canUpdateSettings && (
         <div className="flex justify-end">
           <Button onClick={handleSaveSettings}>

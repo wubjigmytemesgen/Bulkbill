@@ -7,8 +7,7 @@ import {
     getPermissions, initializePermissions, subscribeToPermissions,
     getRolePermissions, initializeRolePermissions, subscribeToRolePermissions,
     updateRolePermissions,
-    deletePermission,
-    refetchUserPermissions
+    deletePermission
 } from "@/lib/data-store";
 import type { DomainRole, DomainPermission, DomainRolePermission } from "@/lib/data-store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -99,10 +98,11 @@ export default function StaffRolesAndPermissionsPage() {
         }
     }, [selectedRoleId, rolePermissions]);
 
-    const handlePermissionToggle = (permissionId: number, checked: boolean) => {
+    const handlePermissionToggle = (permissionId: number, checked: boolean | "indeterminate") => {
+        const isChecked = checked === true;
         setSelectedPermissions(prev => {
             const newSet = new Set(prev);
-            if (checked) {
+            if (isChecked) {
                 newSet.add(permissionId);
             } else {
                 newSet.delete(permissionId);
@@ -125,8 +125,11 @@ export default function StaffRolesAndPermissionsPage() {
 
         if (result.success) {
             const selectedRole = roles.find(r => r.id === roleIdNum);
-            toast({ title: "Permissions Updated", description: `Permissions for the role "${selectedRole?.role_name}" have been saved.` });
-            await refetchUserPermissions();
+            toast({ title: "Permissions Updated", description: `Permissions for the role "${selectedRole?.role_name}" have been saved successfully.` });
+
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
         } else {
             toast({ variant: "destructive", title: "Update Failed", description: result.message || "An unexpected error occurred." });
         }

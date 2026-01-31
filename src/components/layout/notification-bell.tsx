@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Bell, CircleAlert } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import {
   getNotifications,
   initializeNotifications,
@@ -31,9 +32,10 @@ interface UserProfile {
 
 interface NotificationBellProps {
   user: UserProfile | null;
+  className?: string;
 }
 
-export function NotificationBell({ user }: NotificationBellProps) {
+export function NotificationBell({ user, className }: NotificationBellProps) {
   const [notifications, setNotifications] = React.useState<DomainNotification[]>([]);
   const [allBranches, setAllBranches] = React.useState<Branch[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
@@ -44,15 +46,15 @@ export function NotificationBell({ user }: NotificationBellProps) {
     if (typeof window !== "undefined") {
       setLastReadTimestamp(localStorage.getItem(LAST_READ_TIMESTAMP_KEY));
     }
-    
+
     const fetchData = async () => {
       await Promise.all([initializeNotifications(), initializeBranches()]);
       setNotifications(getNotifications());
       setAllBranches(getBranches());
     };
-    
+
     fetchData();
-    
+
     const unsubNotifications = subscribeToNotifications(setNotifications);
     const unsubBranches = subscribeToBranches(setAllBranches);
 
@@ -69,31 +71,31 @@ export function NotificationBell({ user }: NotificationBellProps) {
 
     const userRole = user.role.toLowerCase();
     const isPrivilegedUser = userRole === 'admin' || userRole === 'head office management';
-    
+
     let filteredNotifications;
-    
+
     if (isPrivilegedUser) {
-        // Admins and Head Office see all notifications
-        filteredNotifications = notifications;
+      // Admins and Head Office see all notifications
+      filteredNotifications = notifications;
     } else {
-        // Staff and Staff Management see notifications for their branch or for 'All Staff'
-        filteredNotifications = notifications.filter(n => 
-            n.targetBranchId === null || // Sent to All Staff
-            n.targetBranchId === user.branchId // Sent to their specific branch
-        );
+      // Staff and Staff Management see notifications for their branch or for 'All Staff'
+      filteredNotifications = notifications.filter(n =>
+        n.targetBranchId === null || // Sent to All Staff
+        n.targetBranchId === user.branchId // Sent to their specific branch
+      );
     }
-    
+
     return filteredNotifications
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      
+
   }, [notifications, user]);
 
   React.useEffect(() => {
-    if (user) { 
-        const newUnreadCount = relevantNotifications.filter(
-          (n) => !lastReadTimestamp || new Date(n.createdAt) > new Date(lastReadTimestamp)
-        ).length;
-        setUnreadCount(newUnreadCount);
+    if (user) {
+      const newUnreadCount = relevantNotifications.filter(
+        (n) => !lastReadTimestamp || new Date(n.createdAt) > new Date(lastReadTimestamp)
+      ).length;
+      setUnreadCount(newUnreadCount);
     }
   }, [relevantNotifications, lastReadTimestamp, user]);
 
@@ -107,25 +109,25 @@ export function NotificationBell({ user }: NotificationBellProps) {
   };
 
   const handleDialogChange = (isOpen: boolean) => {
-      if (!isOpen) {
-          setSelectedNotification(null);
-      }
+    if (!isOpen) {
+      setSelectedNotification(null);
+    }
   };
-  
+
   const getDisplayTargetName = (targetId: string | null) => {
     if (targetId === null) return "All Staff";
     return allBranches.find(b => b.id === targetId)?.name || `Branch ID: ${targetId}`;
   };
 
   if (!user) {
-      return null;
+    return null;
   }
 
   return (
     <Dialog open={!!selectedNotification} onOpenChange={handleDialogChange}>
       <DropdownMenu onOpenChange={handleOpenChange}>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-full">
+          <Button variant="ghost" size="icon" className={cn("relative h-8 w-8 rounded-full text-white hover:bg-white/10", className)}>
             <Bell className="h-5 w-5" />
             {unreadCount > 0 && (
               <div className="absolute top-0 right-0 -mr-1 -mt-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
@@ -186,34 +188,34 @@ export function NotificationBell({ user }: NotificationBellProps) {
       </DropdownMenu>
 
       {selectedNotification && (
-         <DialogContent>
-             <DialogHeader>
-                 <DialogTitle>{selectedNotification.title}</DialogTitle>
-                 <DialogDescription className="text-xs pt-2">
-                     Sent by {selectedNotification.senderName} to {getDisplayTargetName(selectedNotification.targetBranchId)} &bull; {(() => {
-                        const createdAt = selectedNotification.createdAt as any;
-                        try {
-                          if (!createdAt) return 'Unknown time';
-                          let d: Date;
-                          if (typeof createdAt === 'string') {
-                            if (isNaN(Date.parse(createdAt))) return 'Unknown time';
-                            d = parseISO(createdAt);
-                          } else if (typeof createdAt === 'number') {
-                            d = new Date(createdAt);
-                          } else if (createdAt instanceof Date) {
-                            d = createdAt;
-                          } else {
-                            return 'Unknown time';
-                          }
-                          return formatDistanceToNow(d, { addSuffix: true });
-                        } catch (_e) {
-                          return 'Unknown time';
-                        }
-                     })()}
-                 </DialogDescription>
-             </DialogHeader>
-             <div className="py-4 text-sm">{selectedNotification.message}</div>
-         </DialogContent>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{selectedNotification.title}</DialogTitle>
+            <DialogDescription className="text-xs pt-2">
+              Sent by {selectedNotification.senderName} to {getDisplayTargetName(selectedNotification.targetBranchId)} &bull; {(() => {
+                const createdAt = selectedNotification.createdAt as any;
+                try {
+                  if (!createdAt) return 'Unknown time';
+                  let d: Date;
+                  if (typeof createdAt === 'string') {
+                    if (isNaN(Date.parse(createdAt))) return 'Unknown time';
+                    d = parseISO(createdAt);
+                  } else if (typeof createdAt === 'number') {
+                    d = new Date(createdAt);
+                  } else if (createdAt instanceof Date) {
+                    d = createdAt;
+                  } else {
+                    return 'Unknown time';
+                  }
+                  return formatDistanceToNow(d, { addSuffix: true });
+                } catch (_e) {
+                  return 'Unknown time';
+                }
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 text-sm">{selectedNotification.message}</div>
+        </DialogContent>
       )}
     </Dialog>
   );

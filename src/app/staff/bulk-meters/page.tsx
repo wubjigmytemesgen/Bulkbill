@@ -33,6 +33,7 @@ import type { StaffMember } from "@/app/admin/staff-management/staff-types";
 import { format, parseISO, lastDayOfMonth } from "date-fns";
 import { calculateBillAction } from "@/lib/actions";
 import { type CustomerType, type SewerageConnection, type PaymentStatus, type BillCalculationResult } from "@/lib/billing-calculations";
+import { getBillingPeriodStartDate, getBillingPeriodEndDate, calculateDueDate } from "@/lib/billing-config";
 
 export default function StaffBulkMetersPage() {
   const { hasPermission } = usePermissions();
@@ -191,7 +192,7 @@ export default function StaffBulkMetersPage() {
 
     const allBills = getBills();
     const metersToProcess = branchFilteredBulkMeters.filter(bm =>
-      !allBills.some(bill => bill.bulkMeterId === bm.customerKeyNumber && bill.monthYear === bm.month)
+      !allBills.some(bill => bill.CUSTOMERKEY === bm.customerKeyNumber && bill.monthYear === bm.month)
     );
 
     let successCount = 0;
@@ -236,22 +237,23 @@ export default function StaffBulkMetersPage() {
     const totalPayableForCycle = billForDifferenceUsage + balanceFromPreviousPeriods;
 
     const billDate = new Date();
-    const periodEndDate = lastDayOfMonth(parseISO(`${bulkMeter.month}-01`));
-    const dueDateObject = new Date(periodEndDate);
-    dueDateObject.setDate(dueDateObject.getDate() + 15);
+    // Use centralized billing config for period dates
+    const periodStartDate = getBillingPeriodStartDate(bulkMeter.month!);
+    const periodEndDate = getBillingPeriodEndDate(bulkMeter.month!);
+    const dueDateObject = calculateDueDate(periodEndDate);
 
     const billToSave = {
-      bulkMeterId: bulkMeter.customerKeyNumber,
-      billPeriodStartDate: `${bulkMeter.month}-01`,
-      billPeriodEndDate: format(periodEndDate, 'yyyy-MM-dd'),
+      CUSTOMERKEY: bulkMeter.customerKeyNumber,
+      billPeriodStartDate: periodStartDate,
+      billPeriodEndDate: periodEndDate,
       monthYear: bulkMeter.month!,
-      previousReadingValue: bulkMeter.previousReading,
-      currentReadingValue: bulkMeter.currentReading,
-      usageM3: (bulkMeter.currentReading ?? 0) - (bulkMeter.previousReading ?? 0),
+      PREVREAD: bulkMeter.previousReading,
+      CURRREAD: bulkMeter.currentReading,
+      CONS: (bulkMeter.currentReading ?? 0) - (bulkMeter.previousReading ?? 0),
       differenceUsage: differenceUsageForCycle,
       ...differenceBillBreakdownForCycle,
       balanceCarriedForward: balanceFromPreviousPeriods,
-      totalAmountDue: billForDifferenceUsage,
+      TOTALBILLAMOUNT: billForDifferenceUsage,
       dueDate: format(dueDateObject, 'yyyy-MM-dd'),
       paymentStatus: carryBalance ? 'Unpaid' : 'Paid',
       notes: `Bill generated on ${format(billDate, 'PP')}. Total payable was ${totalPayableForCycle.toFixed(2)}.`,

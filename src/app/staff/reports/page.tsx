@@ -30,6 +30,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { ReportDataView } from '@/app/admin/reports/report-data-view';
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
+import { customerTypes } from "@/lib/billing-calculations";
 
 interface User {
   email: string;
@@ -42,6 +43,7 @@ interface ReportFilters {
   branchId?: string;
   startDate?: Date;
   endDate?: Date;
+  chargeGroup?: string;
 }
 
 interface ReportType {
@@ -63,7 +65,7 @@ const arrayToXlsxBlob = (data: any[], headers: string[]): Blob => {
   for (let C = range.s.c; C <= range.e.c; ++C) {
     const address = XLSX.utils.encode_cell({ r: 0, c: C });
     if (!ws[address]) {
-        XLSX.utils.sheet_add_aoa(ws, [[headers[C] || '']], { origin: address });
+      XLSX.utils.sheet_add_aoa(ws, [[headers[C] || '']], { origin: address });
     }
     ws[address].s = { font: { bold: true } };
   }
@@ -106,30 +108,30 @@ const availableStaffReports: ReportType[] = [
       "subCity", "woreda", "sewerageConnection", "assignedBulkMeterId", "status", "paymentStatus", "calculatedBill"
     ],
     getData: (filters: ReportFilters) => {
-        const { branchId, startDate, endDate } = filters;
-        if (!branchId) return [];
-        const allCustomers = getCustomers();
-        const allBulkMeters = getBulkMeters();
+      const { branchId, startDate, endDate } = filters;
+      if (!branchId) return [];
+      const allCustomers = getCustomers();
+      const allBulkMeters = getBulkMeters();
 
-        const branchBulkMeterIds = new Set(allBulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber));
-        
-        let filteredData = allCustomers.filter(c => 
-            c.branchId === branchId || 
-            (c.assignedBulkMeterId && branchBulkMeterIds.has(c.assignedBulkMeterId))
-        );
+      const branchCUSTOMERKEYs = new Set(allBulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber));
 
-        if (startDate && endDate) {
-            const start = startDate.getTime();
-            const end = endDate.getTime();
-            filteredData = filteredData.filter(c => {
-              if (!c.created_at) return false;
-              try {
-                const customerDate = new Date(c.created_at).getTime();
-                return customerDate >= start && customerDate <= end;
-              } catch { return false; }
-            });
-        }
-        return filteredData;
+      let filteredData = allCustomers.filter(c =>
+        c.branchId === branchId ||
+        (c.assignedBulkMeterId && branchCUSTOMERKEYs.has(c.assignedBulkMeterId))
+      );
+
+      if (startDate && endDate) {
+        const start = startDate.getTime();
+        const end = endDate.getTime();
+        filteredData = filteredData.filter(c => {
+          if (!c.created_at) return false;
+          try {
+            const customerDate = new Date(c.created_at).getTime();
+            return customerDate >= start && customerDate <= end;
+          } catch { return false; }
+        });
+      }
+      return filteredData;
     },
   },
   {
@@ -141,11 +143,11 @@ const availableStaffReports: ReportType[] = [
       "previousReading", "currentReading", "month", "specificArea", "subCity", "woreda", "status", "paymentStatus"
     ],
     getData: (filters: ReportFilters) => {
-       const { branchId } = filters;
-       if (!branchId) return [];
-        let filteredData = getBulkMeters().filter(bm => bm.branchId === branchId);
-        // Note: Date filtering not implemented for bulk meters as they lack a `created_at` field
-        return filteredData;
+      const { branchId } = filters;
+      if (!branchId) return [];
+      let filteredData = getBulkMeters().filter(bm => bm.branchId === branchId);
+      // Note: Date filtering not implemented for bulk meters as they lack a `created_at` field
+      return filteredData;
     },
   },
   {
@@ -153,45 +155,256 @@ const availableStaffReports: ReportType[] = [
     name: "My Branch Billing Summary (XLSX)",
     description: "Summary of generated bills for all customers and bulk meters in your branch.",
     headers: [
-        "id", "individualCustomerId", "bulkMeterId", "billPeriodStartDate", "billPeriodEndDate", 
-        "monthYear", "previousReadingValue", "currentReadingValue", "usageM3", 
-        "baseWaterCharge", "sewerageCharge", "maintenanceFee", "sanitationFee", 
-        "meterRent", "totalAmountDue", "amountPaid", "balanceDue", "dueDate", 
-        "paymentStatus", "billNumber", "notes", "createdAt", "updatedAt"
+      "id", "individualCustomerId", "CUSTOMERKEY", "billPeriodStartDate", "billPeriodEndDate",
+      "monthYear", "PREVREAD", "CURRREAD", "CONS",
+      "baseWaterCharge", "sewerageCharge", "maintenanceFee", "sanitationFee",
+      "meterRent", "TOTALBILLAMOUNT", "amountPaid", "OUTSTANDINGAMT", "dueDate",
+      "paymentStatus", "billNumber", "notes", "createdAt", "updatedAt"
     ],
     getData: (filters: ReportFilters) => {
-        const { branchId, startDate, endDate } = filters;
-        if (!branchId) return [];
+      const { branchId, startDate, endDate } = filters;
+      if (!branchId) return [];
 
-        let allBillsFromStore = getBills();
-        const allCustomers = getCustomers();
-        const allBulkMeters = getBulkMeters();
+      let allBillsFromStore = getBills();
+      const allCustomers = getCustomers();
+      const allBulkMeters = getBulkMeters();
 
-        const branchBulkMeterKeys = new Set(allBulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber));
-        let filteredBills = allBillsFromStore.filter(bill => {
-            if (bill.bulkMeterId) return branchBulkMeterKeys.has(bill.bulkMeterId);
-            if (bill.individualCustomerId) {
-                const customer = allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId);
-                if (!customer) return false;
-                return customer.branchId === branchId || (customer.assignedBulkMeterId && branchBulkMeterKeys.has(customer.assignedBulkMeterId));
-            }
-            return false;
-        });
-
-        if (startDate && endDate) {
-             const start = startDate.getTime();
-             const end = endDate.getTime();
-             filteredBills = filteredBills.filter(b => {
-               try {
-                 const billDate = new Date(b.billPeriodEndDate).getTime();
-                 return billDate >= start && billDate <= end;
-               } catch { return false; }
-             });
+      const branchBulkMeterKeys = new Set(allBulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber));
+      let filteredBills = allBillsFromStore.filter(bill => {
+        if (bill.CUSTOMERKEY) return branchBulkMeterKeys.has(bill.CUSTOMERKEY);
+        if (bill.individualCustomerId) {
+          const customer = allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId);
+          if (!customer) return false;
+          return customer.branchId === branchId || (customer.assignedBulkMeterId && branchBulkMeterKeys.has(customer.assignedBulkMeterId));
         }
-        return filteredBills;
+        return false;
+      });
+
+      if (startDate && endDate) {
+        const start = startDate.getTime();
+        const end = endDate.getTime();
+        filteredBills = filteredBills.filter(b => {
+          try {
+            const billDate = new Date(b.billPeriodEndDate).getTime();
+            return billDate >= start && billDate <= end;
+          } catch { return false; }
+        });
+      }
+      return filteredBills;
+    },
+  },
+  {
+    id: "gl-finance-monthly",
+    name: "GL Finance Monthly Report (XLSX)",
+    description: "Monthly summary of billing components grouped by charge group.",
+    headers: [
+      "Period", "Charge Group", "Base Water Charge", "Sewerage Charge", "Maintenance Fee",
+      "Sanitation Fee", "Meter Rent", "Additional Fees", "VAT Amount", "Total Excl VAT", "Total Incl VAT", "Total Amount"
+    ],
+    getData: (filters: ReportFilters) => {
+      const { branchId, startDate, endDate, chargeGroup: filterChargeGroup } = filters;
+      const allBills = getBills();
+      const allCustomers = getCustomers();
+      const allBulkMeters = getBulkMeters();
+
+      const branchBulkMeterKeys = new Set(allBulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber));
+
+      let filteredBills = allBills;
+      if (branchId) {
+        filteredBills = filteredBills.filter(bill => {
+          if (bill.CUSTOMERKEY) return branchBulkMeterKeys.has(bill.CUSTOMERKEY);
+          if (bill.individualCustomerId) {
+            const customer = allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId);
+            return customer && (customer.branchId === branchId || (customer.assignedBulkMeterId && branchBulkMeterKeys.has(customer.assignedBulkMeterId)));
+          }
+          return false;
+        });
+      }
+
+      if (startDate && endDate) {
+        const start = startDate.getTime();
+        const end = endDate.getTime();
+        filteredBills = filteredBills.filter(b => {
+          const billDate = new Date(b.billPeriodEndDate).getTime();
+          return billDate >= start && billDate <= end;
+        });
+      }
+
+      const aggregated: Record<string, any> = {};
+
+      filteredBills.forEach(bill => {
+        const period = bill.monthYear; // Typically YYYY-MM
+        let chargeGroup = "Unknown";
+        if (bill.individualCustomerId) {
+          const cust = allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId);
+          chargeGroup = cust?.customerType || "Unknown";
+        } else if (bill.CUSTOMERKEY) {
+          const bm = allBulkMeters.find(b => b.customerKeyNumber === bill.CUSTOMERKEY);
+          chargeGroup = bm?.chargeGroup || "Unknown";
+        }
+
+        const key = `${period}-${chargeGroup}`;
+        if (!aggregated[key]) {
+          aggregated[key] = {
+            "Period": period,
+            "Charge Group": chargeGroup,
+            "Base Water Charge": 0,
+            "Sewerage Charge": 0,
+            "Maintenance Fee": 0,
+            "Sanitation Fee": 0,
+            "Meter Rent": 0,
+            "Additional Fees": 0,
+            "VAT Amount": 0,
+            "Total Excl VAT": 0,
+            "Total Incl VAT": 0,
+            "Total Amount": 0,
+          };
+        }
+
+        const base = Number(bill.baseWaterCharge) || 0;
+        const sewerage = Number(bill.sewerageCharge) || 0;
+        const maint = Number(bill.maintenanceFee) || 0;
+        const sanit = Number(bill.sanitationFee) || 0;
+        const rent = Number(bill.meterRent) || 0;
+        const add = Number(bill.additionalFeesCharge) || 0;
+        const vat = Number(bill.vatAmount) || 0;
+        const total = Number(bill.TOTALBILLAMOUNT) || 0;
+
+        aggregated[key]["Base Water Charge"] += base;
+        aggregated[key]["Sewerage Charge"] += sewerage;
+        aggregated[key]["Maintenance Fee"] += maint;
+        aggregated[key]["Sanitation Fee"] += sanit;
+        aggregated[key]["Meter Rent"] += rent;
+        aggregated[key]["Additional Fees"] += add;
+        aggregated[key]["VAT Amount"] += vat;
+        aggregated[key]["Total Incl VAT"] += total;
+        aggregated[key]["Total Amount"] += total;
+        aggregated[key]["Total Excl VAT"] += (total - vat);
+      });
+
+      let resultRows = Object.values(aggregated);
+      if (filterChargeGroup && filterChargeGroup !== "all") {
+        resultRows = resultRows.filter(row => row["Charge Group"] === filterChargeGroup);
+      }
+
+      return resultRows.map(row => {
+        const result: any = { ...row };
+        Object.keys(result).forEach(k => {
+          if (typeof result[k] === 'number') {
+            result[k] = parseFloat(result[k].toFixed(2));
+          }
+        });
+        return result;
+      }).sort((a, b) => b.Period.localeCompare(a.Period));
+    },
+  },
+  {
+    id: "gl-finance-yearly",
+    name: "GL Finance Yearly Report (XLSX)",
+    description: "Yearly summary of billing components grouped by charge group.",
+    headers: [
+      "Period", "Charge Group", "Base Water Charge", "Sewerage Charge", "Maintenance Fee",
+      "Sanitation Fee", "Meter Rent", "Additional Fees", "VAT Amount", "Total Excl VAT", "Total Incl VAT", "Total Amount"
+    ],
+    getData: (filters: ReportFilters) => {
+      const { branchId, startDate, endDate, chargeGroup: filterChargeGroup } = filters;
+      const allBills = getBills();
+      const allCustomers = getCustomers();
+      const allBulkMeters = getBulkMeters();
+
+      const branchBulkMeterKeys = new Set(allBulkMeters.filter(bm => bm.branchId === branchId).map(bm => bm.customerKeyNumber));
+
+      let filteredBills = allBills;
+      if (branchId) {
+        filteredBills = filteredBills.filter(bill => {
+          if (bill.CUSTOMERKEY) return branchBulkMeterKeys.has(bill.CUSTOMERKEY);
+          if (bill.individualCustomerId) {
+            const customer = allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId);
+            return customer && (customer.branchId === branchId || (customer.assignedBulkMeterId && branchBulkMeterKeys.has(customer.assignedBulkMeterId)));
+          }
+          return false;
+        });
+      }
+
+      if (startDate && endDate) {
+        const start = startDate.getTime();
+        const end = endDate.getTime();
+        filteredBills = filteredBills.filter(b => {
+          const billDate = new Date(b.billPeriodEndDate).getTime();
+          return billDate >= start && billDate <= end;
+        });
+      }
+
+      const aggregated: Record<string, any> = {};
+
+      filteredBills.forEach(bill => {
+        const period = bill.monthYear.substring(0, 4); // YYYY
+        let chargeGroup = "Unknown";
+        if (bill.individualCustomerId) {
+          const cust = allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId);
+          chargeGroup = cust?.customerType || "Unknown";
+        } else if (bill.CUSTOMERKEY) {
+          const bm = allBulkMeters.find(b => b.customerKeyNumber === bill.CUSTOMERKEY);
+          chargeGroup = bm?.chargeGroup || "Unknown";
+        }
+
+        const key = `${period}-${chargeGroup}`;
+        if (!aggregated[key]) {
+          aggregated[key] = {
+            "Period": period,
+            "Charge Group": chargeGroup,
+            "Base Water Charge": 0,
+            "Sewerage Charge": 0,
+            "Maintenance Fee": 0,
+            "Sanitation Fee": 0,
+            "Meter Rent": 0,
+            "Additional Fees": 0,
+            "VAT Amount": 0,
+            "Total Excl VAT": 0,
+            "Total Incl VAT": 0,
+            "Total Amount": 0,
+          };
+        }
+
+        const base = Number(bill.baseWaterCharge) || 0;
+        const sewerage = Number(bill.sewerageCharge) || 0;
+        const maint = Number(bill.maintenanceFee) || 0;
+        const sanit = Number(bill.sanitationFee) || 0;
+        const rent = Number(bill.meterRent) || 0;
+        const add = Number(bill.additionalFeesCharge) || 0;
+        const vat = Number(bill.vatAmount) || 0;
+        const total = Number(bill.TOTALBILLAMOUNT) || 0;
+
+        aggregated[key]["Base Water Charge"] += base;
+        aggregated[key]["Sewerage Charge"] += sewerage;
+        aggregated[key]["Maintenance Fee"] += maint;
+        aggregated[key]["Sanitation Fee"] += sanit;
+        aggregated[key]["Meter Rent"] += rent;
+        aggregated[key]["Additional Fees"] += add;
+        aggregated[key]["VAT Amount"] += vat;
+        aggregated[key]["Total Incl VAT"] += total;
+        aggregated[key]["Total Amount"] += total;
+        aggregated[key]["Total Excl VAT"] += (total - vat);
+      });
+
+      let resultRows = Object.values(aggregated);
+      if (filterChargeGroup && filterChargeGroup !== "all") {
+        resultRows = resultRows.filter(row => row["Charge Group"] === filterChargeGroup);
+      }
+
+      return resultRows.map(row => {
+        const result: any = { ...row };
+        Object.keys(result).forEach(k => {
+          if (typeof result[k] === 'number') {
+            result[k] = parseFloat(result[k].toFixed(2));
+          }
+        });
+        return result;
+      }).sort((a, b) => b.Period.localeCompare(a.Period));
     },
   },
 ];
+
 
 export default function StaffReportsPage() {
   const { toast } = useToast();
@@ -199,7 +412,7 @@ export default function StaffReportsPage() {
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [staffBranchName, setStaffBranchName] = React.useState<string | undefined>(undefined);
   const [staffBranchId, setStaffBranchId] = React.useState<string | undefined>(undefined);
-  
+
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>(undefined);
   const [selectedColumns, setSelectedColumns] = React.useState<Set<string>>(new Set());
   const [isColumnSelectorOpen, setIsColumnSelectorOpen] = React.useState(false);
@@ -208,6 +421,7 @@ export default function StaffReportsPage() {
   const [bulkMeters, setBulkMeters] = React.useState<BulkMeter[]>([]);
   const [selectedYear, setSelectedYear] = React.useState<string>("all");
   const [selectedMonth, setSelectedMonth] = React.useState<string>("all");
+  const [selectedChargeGroup, setSelectedChargeGroup] = React.useState<string>("all");
   const [isLoading, setIsLoading] = React.useState(true);
 
   const selectedReport = availableStaffReports.find(report => report.id === selectedReportId);
@@ -230,7 +444,7 @@ export default function StaffReportsPage() {
     if (selectedMonth !== "all") {
       filteredBms = filteredBms.filter(bm => bm.month.split('-')[1] === selectedMonth);
     }
-    
+
     const monthlyUsage: { [key: string]: { name: string; differenceUsage: number } } = {};
 
     filteredBms.forEach(bm => {
@@ -243,7 +457,7 @@ export default function StaffReportsPage() {
       }
     });
 
-    return Object.values(monthlyUsage).sort((a,b) => a.name.localeCompare(b.name));
+    return Object.values(monthlyUsage).sort((a, b) => a.name.localeCompare(b.name));
   }, [bulkMeters, staffBranchId, selectedYear, selectedMonth]);
 
   React.useEffect(() => {
@@ -286,11 +500,12 @@ export default function StaffReportsPage() {
       return [];
     }
     return selectedReport.getData({
-        branchId: staffBranchId,
-        startDate: dateRange?.from,
-        endDate: dateRange?.to,
+      branchId: staffBranchId,
+      startDate: dateRange?.from,
+      endDate: dateRange?.to,
+      chargeGroup: selectedChargeGroup,
     });
-  }, [selectedReport, staffBranchId, dateRange]);
+  }, [selectedReport, staffBranchId, dateRange, selectedChargeGroup]);
 
 
   const handleGenerateReport = () => {
@@ -305,12 +520,12 @@ export default function StaffReportsPage() {
       return;
     }
     if (!staffBranchId) {
-        toast({
-            variant: "destructive",
-            title: "Branch Information Missing",
-            description: "Cannot generate branch-specific report without branch information.",
-        });
-        return;
+      toast({
+        variant: "destructive",
+        title: "Branch Information Missing",
+        description: "Cannot generate branch-specific report without branch information.",
+      });
+      return;
     }
 
     setIsGenerating(true);
@@ -330,7 +545,7 @@ export default function StaffReportsPage() {
       const xlsxBlob = arrayToXlsxBlob(data, finalHeaders);
       const fileName = `${selectedReport.id}_${new Date().toISOString().split('T')[0]}.xlsx`;
       downloadFile(xlsxBlob, fileName);
-      
+
       toast({
         title: "Report Generated",
         description: `${selectedReport.name} has been downloaded as ${fileName}.`,
@@ -350,12 +565,12 @@ export default function StaffReportsPage() {
 
   const handleViewReport = () => {
     if (!selectedReport) return;
-    
-    setReportData(null); 
+
+    setReportData(null);
 
     if (!selectedReport.getData || !selectedReport.headers) {
-        toast({ variant: "destructive", title: "Report Not Implemented" });
-        return;
+      toast({ variant: "destructive", title: "Report Not Implemented" });
+      return;
     }
 
     const data = getFilteredData();
@@ -384,30 +599,30 @@ export default function StaffReportsPage() {
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
               <Select value={selectedYear} onValueChange={setSelectedYear}>
-                  <SelectTrigger className="w-full md:w-[120px]">
-                      <SelectValue placeholder="Select Year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                      <SelectItem value="all">All Years</SelectItem>
-                      {years.map((year) => (
-                        <SelectItem key={year} value={year}>
-                          {year}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
+                <SelectTrigger className="w-full md:w-[120px]">
+                  <SelectValue placeholder="Select Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Years</SelectItem>
+                  {years.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                  <SelectTrigger className="w-full md:w-[120px]">
-                      <SelectValue placeholder="Select Month" />
-                  </SelectTrigger>
-                  <SelectContent>
-                      <SelectItem value="all">All Months</SelectItem>
-                      {[...Array(12)].map((_, i) => (
-                        <SelectItem key={i+1} value={String(i + 1).padStart(2, '0')}>
-                          {new Date(0, i).toLocaleString('default', { month: 'long' })}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
+                <SelectTrigger className="w-full md:w-[120px]">
+                  <SelectValue placeholder="Select Month" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Months</SelectItem>
+                  {[...Array(12)].map((_, i) => (
+                    <SelectItem key={i + 1} value={String(i + 1).padStart(2, '0')}>
+                      {new Date(0, i).toLocaleString('default', { month: 'long' })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </div>
           </div>
@@ -464,7 +679,7 @@ export default function StaffReportsPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">{selectedReport.description}</p>
-                 {selectedReport.getData ? (
+                {selectedReport.getData ? (
                   <div className="mt-4 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
                       <div className="space-y-2">
@@ -474,74 +689,91 @@ export default function StaffReportsPage() {
                         </div>
                       </div>
                       <div className="space-y-2">
-                          <Label htmlFor="date-range-filter">Filter by Date</Label>
-                          <DateRangePicker 
-                              date={dateRange} 
-                              onDateChange={setDateRange}
-                          />
+                        <Label htmlFor="charge-group-filter">Filter by Charge Group</Label>
+                        <Select
+                          value={selectedChargeGroup}
+                          onValueChange={setSelectedChargeGroup}
+                        >
+                          <SelectTrigger id="charge-group-filter">
+                            <SelectValue placeholder="Select a charge group" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Charge Groups</SelectItem>
+                            {customerTypes.map((type) => (
+                              <SelectItem key={type} value={type}>{type}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-2">
-                          <Label>Select Columns</Label>
-                          <Popover open={isColumnSelectorOpen} onOpenChange={setIsColumnSelectorOpen}>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                aria-expanded={isColumnSelectorOpen}
-                                className="w-full justify-between"
-                                disabled={!selectedReport.headers}
-                              >
-                                {selectedColumns.size} of {selectedReport.headers?.length} selected
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-full p-0">
-                              <Command>
-                                <CommandInput placeholder="Search columns..." />
-                                <CommandEmpty>No column found.</CommandEmpty>
-                                <CommandList>
-                                  <CommandGroup>
-                                    {selectedReport.headers?.map((header) => (
-                                      <CommandItem
-                                        key={header}
-                                        value={header}
-                                        onSelect={() => {
-                                          setSelectedColumns(prev => {
-                                            const newSet = new Set(prev);
-                                            if (newSet.has(header)) {
-                                              newSet.delete(header);
-                                            } else {
-                                              newSet.add(header);
-                                            }
-                                            return newSet;
-                                          });
-                                        }}
-                                      >
-                                        <Check
-                                          className={cn(
-                                            "mr-2 h-4 w-4",
-                                            selectedColumns.has(header) ? "opacity-100" : "opacity-0"
-                                          )}
-                                        />
-                                        {header.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
+                        <Label htmlFor="date-range-filter">Filter by Date</Label>
+                        <DateRangePicker
+                          date={dateRange}
+                          onDateChange={setDateRange}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Select Columns</Label>
+                        <Popover open={isColumnSelectorOpen} onOpenChange={setIsColumnSelectorOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={isColumnSelectorOpen}
+                              className="w-full justify-between"
+                              disabled={!selectedReport.headers}
+                            >
+                              {selectedColumns.size} of {selectedReport.headers?.length} selected
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-full p-0">
+                            <Command>
+                              <CommandInput placeholder="Search columns..." />
+                              <CommandEmpty>No column found.</CommandEmpty>
+                              <CommandList>
+                                <CommandGroup>
+                                  {selectedReport.headers?.map((header) => (
+                                    <CommandItem
+                                      key={header}
+                                      value={header}
+                                      onSelect={() => {
+                                        setSelectedColumns(prev => {
+                                          const newSet = new Set(prev);
+                                          if (newSet.has(header)) {
+                                            newSet.delete(header);
+                                          } else {
+                                            newSet.add(header);
+                                          }
+                                          return newSet;
+                                        });
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          selectedColumns.has(header) ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {header.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     </div>
                   </div>
-                 ) : (
-                   <Alert variant="default" className="mt-4 border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30">
-                     <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                     <AlertTitle className="text-blue-700 dark:text-blue-300">Coming Soon</AlertTitle>
-                     <UIAlertDescription className="text-blue-600 dark:text-blue-400">
-                         This report is currently under development.
-                     </UIAlertDescription>
-                   </Alert>
+                ) : (
+                  <Alert variant="default" className="mt-4 border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30">
+                    <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    <AlertTitle className="text-blue-700 dark:text-blue-300">Coming Soon</AlertTitle>
+                    <UIAlertDescription className="text-blue-600 dark:text-blue-400">
+                      This report is currently under development.
+                    </UIAlertDescription>
+                  </Alert>
                 )}
               </CardContent>
             </Card>
@@ -549,7 +781,7 @@ export default function StaffReportsPage() {
 
           {selectedReport && selectedReport.getData && (
             <div className="flex flex-wrap gap-2">
-               <Button onClick={handleViewReport} disabled={isGenerating || !selectedReportId || !staffBranchId}>
+              <Button onClick={handleViewReport} disabled={isGenerating || !selectedReportId || !staffBranchId}>
                 <Eye className="mr-2 h-4 w-4" />
                 View Report
               </Button>
@@ -561,22 +793,22 @@ export default function StaffReportsPage() {
           )}
 
           {!selectedReportId && (
-             <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">
-                Please select a report type to see details and generate.
-             </div>
+            <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">
+              Please select a report type to see details and generate.
+            </div>
           )}
         </CardContent>
       </Card>
-      
+
       {reportData && selectedColumns.size > 0 && (
         <Card className="mt-6">
-            <CardHeader>
-                <CardTitle>Report Preview: {selectedReport?.name.replace(" (XLSX)", "")}</CardTitle>
-                <CardDescription>Displaying {reportData.length} row(s) with {selectedColumns.size} column(s).</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <ReportDataView data={reportData} headers={Array.from(selectedColumns)} />
-            </CardContent>
+          <CardHeader>
+            <CardTitle>Report Preview: {selectedReport?.name.replace(" (XLSX)", "")}</CardTitle>
+            <CardDescription>Displaying {reportData.length} row(s) with {selectedColumns.size} column(s).</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ReportDataView data={reportData} headers={Array.from(selectedColumns)} />
+          </CardContent>
         </Card>
       )}
 

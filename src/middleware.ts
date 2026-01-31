@@ -1,26 +1,46 @@
-
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { decrypt } from '@/lib/auth';
 
-// This function can be marked `async` if using `await` inside
-export function middleware(request: NextRequest) {
-  // Currently, authentication and redirection logic appears to be handled client-side
-  // in components like AuthForm and AppShell.
-  // This middleware is kept minimal to avoid conflicts.
-  // If server-side route protection is needed in the future, this is where it would go.
+const protectedRoutes = ['/admin', '/staff'];
+const adminRoutes = ['/admin'];
+const staffRoutes = ['/staff'];
+
+export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  const isProtectedRoute = protectedRoutes.some(route => path.startsWith(route));
+
+  if (!isProtectedRoute) {
+    return NextResponse.next();
+  }
+
+  const cookie = request.cookies.get('session')?.value;
+  const session = cookie ? await decrypt(cookie).catch(() => null) : null;
+
+  if (!session) {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+
+  const role = session.role?.toLowerCase();
+
+  // Route specific protection
+  const isAdminRoute = adminRoutes.some(route => path.startsWith(route));
+  const isStaffRoute = staffRoutes.some(route => path.startsWith(route));
+
+  if (isAdminRoute && !['admin', 'head office management', 'staff management'].includes(role)) {
+    return NextResponse.redirect(new URL('/staff/dashboard', request.url));
+  }
+
+  if (isStaffRoute && !['admin', 'staff', 'head office management', 'staff management'].includes(role)) {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+
   return NextResponse.next();
 }
 
-// See "Matching Paths" below to learn more
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    // '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/admin/:path*',
+    '/staff/:path*',
   ],
 };

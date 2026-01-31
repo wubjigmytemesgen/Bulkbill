@@ -11,7 +11,11 @@ export const PermissionsContext = createContext<PermissionsContextType | undefin
 export function usePermissions() {
   const context = useContext(PermissionsContext);
   if (!context) {
-    throw new Error('usePermissions must be used within a PermissionsProvider');
+    // Return empty permissions instead of throwing during build/SSR if context is missing
+    return {
+      permissions: new Set<string>(),
+      hasPermission: () => false
+    };
   }
   return context;
 }

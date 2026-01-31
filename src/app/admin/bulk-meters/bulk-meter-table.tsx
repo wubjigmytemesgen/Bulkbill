@@ -2,6 +2,13 @@
 "use client";
 
 import * as React from "react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
+} from "@/components/ui/card";
 import { MoreHorizontal, Edit, Trash2, Gauge, Eye, Check } from "lucide-react";
 import Link from "next/link";
 import {
@@ -51,81 +58,125 @@ export function BulkMeterTable({ data, onEdit, onDelete, onApprove, branches, ca
     }
     return fallbackLocation || "-";
   };
-  
+
   const showActionsColumn = canEdit || canDelete;
 
   return (
-    <div className="rounded-md border mt-4">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Branch</TableHead> 
-            <TableHead>Meter Number</TableHead> 
-            <TableHead>Contract Number</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.map((bulkMeter) => (
-            <TableRow key={bulkMeter.customerKeyNumber}>
-              <TableCell className="font-medium">{bulkMeter.name}</TableCell>
-              <TableCell>{getBranchName(bulkMeter.branchId, bulkMeter.subCity)}</TableCell> 
-              <TableCell>{bulkMeter.meterNumber}</TableCell> 
-              <TableCell>{bulkMeter.contractNumber}</TableCell>
-              <TableCell>
-                <Badge 
-                  variant={
-                    bulkMeter.status === 'Active' ? 'default' 
-                    : 'secondary'
-                  }
-                >
-                  {bulkMeter.status}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-right">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="h-8 w-8 p-0">
-                      <span className="sr-only">Open menu</span>
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                     <Link href={`/admin/bulk-meters/${bulkMeter.customerKeyNumber}`} passHref>
-                       <DropdownMenuItem>
-                         <Eye className="mr-2 h-4 w-4" />
-                         View Details
-                       </DropdownMenuItem>
-                     </Link>
-                    {canEdit && (
-                      <DropdownMenuItem onClick={() => onEdit(bulkMeter)}>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                    )}
-                    {onApprove && (
-                      <DropdownMenuItem onClick={() => onApprove(bulkMeter)}>
-                        <Check className="mr-2 h-4 w-4" />
-                        Approve
-                      </DropdownMenuItem>
-                    )}
-                    {(canEdit && canDelete) && <DropdownMenuSeparator />}
-                    {canDelete && (
-                      <DropdownMenuItem onClick={() => onDelete(bulkMeter)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TableCell>
+    <div className="mt-4">
+      {/* Desktop Table View */}
+      <div className="hidden md:block rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Branch</TableHead>
+              <TableHead>Meter Number</TableHead>
+              <TableHead>INST_KEY</TableHead>
+              <TableHead>Contract Number</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {data.map((bulkMeter) => (
+              <TableRow key={bulkMeter.customerKeyNumber}>
+                <TableCell className="font-medium">{bulkMeter.name}</TableCell>
+                <TableCell>{getBranchName(bulkMeter.branchId, bulkMeter.subCity)}</TableCell>
+                <TableCell>{bulkMeter.meterNumber}</TableCell>
+                <TableCell>{bulkMeter.instKey}</TableCell>
+                <TableCell>{bulkMeter.contractNumber}</TableCell>
+                <TableCell>
+                  <Badge
+                    variant={
+                      bulkMeter.status === 'Active' ? 'default'
+                        : 'secondary'
+                    }
+                  >
+                    {bulkMeter.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="h-8 w-8 p-0">
+                        <span className="sr-only">Open menu</span>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                      <Link href={`/admin/bulk-meters/${bulkMeter.customerKeyNumber}`} passHref>
+                        <DropdownMenuItem>
+                          <Eye className="mr-2 h-4 w-4" />
+                          View Details
+                        </DropdownMenuItem>
+                      </Link>
+                      {canEdit && (
+                        <DropdownMenuItem onClick={() => onEdit(bulkMeter)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                      )}
+                      {onApprove && (
+                        <DropdownMenuItem onClick={() => onApprove(bulkMeter)}>
+                          <Check className="mr-2 h-4 w-4" />
+                          Approve
+                        </DropdownMenuItem>
+                      )}
+                      {(canEdit && canDelete) && <DropdownMenuSeparator />}
+                      {canDelete && (
+                        <DropdownMenuItem onClick={() => onDelete(bulkMeter)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Mobile Card View */}
+      <div className="grid grid-cols-1 gap-4 md:hidden">
+        {data.map((bulkMeter) => (
+          <Card key={bulkMeter.customerKeyNumber} className="overflow-hidden border shadow-sm">
+            <CardHeader className="p-4 bg-slate-50/50 flex flex-row items-center justify-between border-b">
+              <div>
+                <CardTitle className="text-sm font-bold truncate max-w-[200px]">{bulkMeter.name}</CardTitle>
+                <CardDescription className="text-[10px]">Key: {bulkMeter.customerKeyNumber}</CardDescription>
+              </div>
+              <Badge variant={bulkMeter.status === 'Active' ? 'default' : 'secondary'} className="text-[10px] px-1.5">{bulkMeter.status}</Badge>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div><span className="text-muted-foreground uppercase font-semibold">Meter:</span> {bulkMeter.meterNumber}</div>
+                <div><span className="text-muted-foreground uppercase font-semibold">Contract:</span> {bulkMeter.contractNumber}</div>
+                <div className="col-span-2"><span className="text-muted-foreground uppercase font-semibold">Branch:</span> {getBranchName(bulkMeter.branchId, bulkMeter.subCity)}</div>
+              </div>
+              <div className="flex gap-2 pt-2 border-t overflow-x-auto">
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs flex-1">
+                  <Link href={`/admin/bulk-meters/${bulkMeter.customerKeyNumber}`}>
+                    <Eye className="mr-1.5 h-3 w-3" /> View
+                  </Link>
+                </Button>
+                {canEdit && (
+                  <Button variant="outline" size="sm" className="h-8 text-xs flex-1" onClick={() => onEdit(bulkMeter)}>
+                    <Edit className="mr-1.5 h-3 w-3" /> Edit
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button variant="ghost" size="sm" className="h-8 text-xs text-destructive hover:text-white hover:bg-destructive" onClick={() => onDelete(bulkMeter)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import * as React from "react";
 import { SidebarNav, type NavItemGroup, type NavItem } from "@/components/layout/sidebar-nav";
 import { AppShell } from "@/components/layout/app-shell";
 import { PermissionsContext, type PermissionsContextType } from '@/hooks/use-permissions';
-import { refetchUserPermissions } from "@/lib/data-store";
+
 
 interface UserProfile {
     id: string;
@@ -45,8 +45,12 @@ const buildSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => {
     if (hasPermission('notifications_view')) managementItems.push({ title: "Notifications", href: "/admin/notifications", iconName: "Bell" });
     if (hasPermission('tariffs_view')) managementItems.push({ title: "Tariff Management", href: "/admin/tariffs", iconName: "LibraryBig" });
     if (hasPermission('knowledge_base_manage')) managementItems.push({ title: "Knowledge Base", href: "/admin/knowledge-base", iconName: "BookText" });
+    if (hasPermission('bill:view_drafts') || hasPermission('bill:approve') || hasPermission('bill:create') || hasPermission('bill:manage_all')) {
+        managementItems.push({ title: "Bill Management", href: "/admin/bill-management", iconName: "FileText" });
+    }
 
     if (managementItems.length > 0) {
+        managementItems.push({ title: "Fault Codes", href: "/admin/fault-codes", iconName: "AlertOctagon" });
         navItems.push({ title: "Management", items: managementItems });
     }
 
@@ -100,7 +104,8 @@ export default function AdminLayoutClient({ children, user: initialUser }: Admin
 
     React.useEffect(() => {
         const fetchUser = async () => {
-            await refetchUserPermissions();
+            // Session will handle expiry extension; permissions refresh on next login
+
             const storedUser = localStorage.getItem("user");
             if (storedUser) {
                 try {

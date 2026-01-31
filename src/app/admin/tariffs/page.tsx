@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { LibraryBig, ListChecks, PlusCircle, RotateCcw, DollarSign, Percent, Copy, Lock } from "lucide-react";
+import { LibraryBig, ListChecks, PlusCircle, RotateCcw, DollarSign, Percent, Copy, Lock, Edit2, Trash2 } from "lucide-react";
 import type { TariffTier, TariffInfo, SewerageTier } from "@/lib/billing-calculations";
 import {
   getTariff, initializeTariffs, subscribeToTariffs, updateTariff, addTariff
 } from "@/lib/data-store";
+import type { CustomerType } from "@/lib/billing";
+import type { TariffRow } from "@/lib/actions";
 import { TariffRateTable, type DisplayTariffRate } from "./tariff-rate-table";
 import { TariffFormDialog, type TariffFormValues } from "./tariff-form-dialog";
 import { Label } from "@/components/ui/label";
@@ -19,6 +21,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MeterRentDialog } from "./meter-rent-dialog";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Alert, AlertTitle } from "@/components/ui/alert";
+import { FeeEditDialog } from "./fee-edit-dialog";
+import { AdditionalFeeDialog } from "./additional-fee-dialog";
+import { AdditionalFee } from "@/lib/billing-calculations";
 
 const mapTariffTierToDisplay = (tier: TariffTier | SewerageTier, index: number, prevTier?: TariffTier | SewerageTier): DisplayTariffRate => {
   // Coerce tier.limit to a numeric value or numeric Infinity for display logic.
@@ -125,7 +130,7 @@ const normalizeTierItem = (t: any): any => {
   return out;
 };
 
-const getDisplayTiersFromData = (tariffInfo?: TariffInfo, tierType: 'water' | 'sewerage' = 'water'): DisplayTariffRate[] => {
+const getDisplayTiersFromData = (tariffInfo: TariffInfo | null | undefined, tierType: 'water' | 'sewerage' = 'water'): DisplayTariffRate[] => {
   if (!tariffInfo) return [];
 
   const raw = tierType === 'sewerage' ? tariffInfo.sewerage_tiers : tariffInfo.tiers;
@@ -153,9 +158,9 @@ export default function TariffManagementPage() {
   const { hasPermission } = usePermissions();
   const { toast } = useToast();
 
-  const [currentYear, setCurrentYear] = React.useState<number>(new Date().getFullYear());
+  const [currentEffectiveDate, setCurrentEffectiveDate] = React.useState<string>("2021-01-01");
   const [currentTariffType, setCurrentTariffType] = React.useState<'Domestic' | 'Non-domestic' | 'rental Non domestic' | 'rental domestic'>('Domestic');
-  const [allTariffs, setAllTariffs] = React.useState<TariffInfo[]>([]);
+  const [allTariffs, setAllTariffs] = React.useState<TariffRow[]>([]);
   const [isDataLoading, setIsDataLoading] = React.useState(true);
 
   const [editingTierType, setEditingTierType] = React.useState<'water' | 'sewerage' | null>(null);
@@ -164,17 +169,42 @@ export default function TariffManagementPage() {
   const [rateToDelete, setRateToDelete] = React.useState<{ tier: DisplayTariffRate, type: 'water' | 'sewerage' } | null>(null);
 
   const [isMeterRentDialogOpen, setIsMeterRentDialogOpen] = React.useState(false);
+  const [isAdditionalFeeDialogOpen, setIsAdditionalFeeDialogOpen] = React.useState(false);
+  const [editingAdditionalFee, setEditingAdditionalFee] = React.useState<{ fee: AdditionalFee, index: number } | null>(null);
+  const [isFeeDialogOpen, setIsFeeDialogOpen] = React.useState(false);
+  const [feeDialogConfig, setFeeDialogConfig] = React.useState<{
+    title: string;
+    description: string;
+    label: string;
+    fieldName: keyof TariffInfo;
+    defaultValue: number;
+    isPercentage: boolean;
+  } | null>(null);
+
+  // Get unique effective dates for the current tariff type
+  const availableDates = React.useMemo(() => {
+    const dates = allTariffs
+      .filter(t => t.customer_type === currentTariffType && t.effective_date)
+      .map(t => t.effective_date)
+      .sort((a, b) => b.localeCompare(a));
+    return Array.from(new Set(dates));
+  }, [allTariffs, currentTariffType]);
+
+  // If currentEffectiveDate is not in availableDates, pick the latest one
+  React.useEffect(() => {
+    if (availableDates.length > 0 && !availableDates.includes(currentEffectiveDate)) {
+      setCurrentEffectiveDate(availableDates[0]);
+    }
+  }, [availableDates, currentEffectiveDate]);
 
   const activeTariffInfo = React.useMemo(() => {
-    return allTariffs.find(t => t.customer_type === currentTariffType && t.year === currentYear);
-  }, [allTariffs, currentTariffType, currentYear]);
+    const rawTariff = allTariffs.find(t => t.customer_type === currentTariffType && t.effective_date === currentEffectiveDate);
+    if (!rawTariff) return null;
+    return getTariff(rawTariff.customer_type as CustomerType, rawTariff.effective_date);
+  }, [allTariffs, currentTariffType, currentEffectiveDate]);
 
-  const activeWaterTiers = getDisplayTiersFromData(activeTariffInfo, 'water');
-  const activeSewerageTiers = getDisplayTiersFromData(activeTariffInfo, 'sewerage');
-  const yearOptions = React.useMemo(() => generateYearOptions(), []);
-
-  // Prefer a parsed version of the currently selected tariff (some sources store JSON fields as strings)
-  const parsedActiveTariff = getTariff(currentTariffType, currentYear);
+  const activeWaterTiers = activeTariffInfo ? getDisplayTiersFromData(activeTariffInfo, 'water') : [];
+  const activeSewerageTiers = activeTariffInfo ? getDisplayTiersFromData(activeTariffInfo, 'sewerage') : [];
 
   const canUpdateTariffs = hasPermission('tariffs_update');
 
@@ -196,9 +226,9 @@ export default function TariffManagementPage() {
       ? { tiers: newTiers as TariffTier[] }
       : { sewerage_tiers: newTiers as SewerageTier[] };
 
-    const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.year, newTariffInfo as any);
+    const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.effective_date!, newTariffInfo as any);
     if (result.success) {
-      toast({ title: "Tariff Updated", description: `${currentTariffType} ${type} tariff rates for ${currentYear} have been saved.` });
+      toast({ title: "Tariff Updated", description: `${currentTariffType} ${type} tariff rates effective ${currentEffectiveDate} have been saved.` });
     } else {
       toast({ variant: "destructive", title: "Update Failed", description: result.message });
     }
@@ -261,7 +291,7 @@ export default function TariffManagementPage() {
     setEditingRate(null);
   };
 
-  const handleSaveMeterRents = async (newPrices: { [key: string]: number }) => {
+  const handleUpdateMeterRent = async (newPrices: { [key: string]: number }) => {
     if (!activeTariffInfo) {
       toast({ variant: "destructive", title: "Error", description: "No active tariff selected to save meter rents." });
       return;
@@ -278,40 +308,151 @@ export default function TariffManagementPage() {
       meter_rent_prices: normalizedPrices,
     };
 
-    const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.year, updatePayload as any);
+    const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.effective_date!, updatePayload as any);
 
     if (result.success) {
-      toast({ title: "Meter Rent Prices Updated", description: `New prices for ${currentYear} have been saved.` });
+      toast({ title: "Meter Rent Prices Updated", description: `New prices for ${currentEffectiveDate} have been saved.` });
       setIsMeterRentDialogOpen(false);
     } else {
       toast({ variant: "destructive", title: "Update Failed", description: result.message });
     }
   };
 
-  const handleCreateNewYearTariff = async () => {
-    if (!activeTariffInfo) {
-      toast({ variant: "destructive", title: "Cannot Create Tariff", description: `No base tariff found for ${currentTariffType} in ${currentYear} to copy from.` });
-      return;
+  const handleOpenAdditionalFeeDialog = (fee?: AdditionalFee, index?: number) => {
+    setEditingAdditionalFee(fee !== undefined && index !== undefined ? { fee, index } : null);
+    setIsAdditionalFeeDialogOpen(true);
+  };
+
+  const handleUpdateAdditionalFee = async (fee: AdditionalFee) => {
+    if (!activeTariffInfo) return;
+
+    let updatedFees = [...(activeTariffInfo.additional_fees || [])];
+    if (editingAdditionalFee !== null) {
+      updatedFees[editingAdditionalFee.index] = fee;
+    } else {
+      updatedFees.push(fee);
     }
 
-    const newYear = currentYear + 1;
-    const existingTariffForNewYear = allTariffs.find(t => t.customer_type === currentTariffType && t.year === newYear);
-
-    if (existingTariffForNewYear) {
-      toast({ variant: "destructive", title: "Tariff Already Exists", description: `A tariff for ${currentTariffType} in ${newYear} already exists. Please select it from the dropdown to edit.` });
-      return;
-    }
-
-    const newTariffData: Omit<TariffInfo, 'id'> = {
-      ...activeTariffInfo,
-      year: newYear,
-    };
-
-    const result = await addTariff(newTariffData as any);
+    const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.effective_date!, {
+      additional_fees: updatedFees
+    } as any);
 
     if (result.success) {
-      toast({ title: "New Tariff Created", description: `Successfully created tariff for ${currentTariffType} for the year ${newYear}, copied from ${currentYear}.` });
-      setCurrentYear(newYear); // Switch to the new year
+      toast({
+        title: editingAdditionalFee ? "Fee Updated" : "Fee Added",
+        description: `Successfully ${editingAdditionalFee ? "updated" : "added"} the additional fee "${fee.name}".`
+      });
+      setIsAdditionalFeeDialogOpen(false);
+    } else {
+      toast({ variant: "destructive", title: "Operation Failed", description: result.message });
+    }
+  };
+
+  const handleDeleteAdditionalFee = async (index: number) => {
+    if (!activeTariffInfo) return;
+
+    const feeToDelete = activeTariffInfo.additional_fees[index];
+    const updatedFees = activeTariffInfo.additional_fees.filter((_, i) => i !== index);
+
+    const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.effective_date!, {
+      additional_fees: updatedFees
+    } as any);
+
+    if (result.success) {
+      toast({ title: "Fee Deleted", description: `Successfully removed the additional fee "${feeToDelete.name}".` });
+    } else {
+      toast({ variant: "destructive", title: "Deletion Failed", description: result.message });
+    }
+  };
+
+  const handleOpenFeeDialog = (fieldName: keyof TariffInfo, title: string, isPercentage: boolean = true) => {
+    if (!activeTariffInfo) return;
+
+    let defaultValue = activeTariffInfo[fieldName] as number;
+    if (isPercentage) {
+      defaultValue = defaultValue * 100; // Convert to percentage for display
+    }
+
+    setFeeDialogConfig({
+      title: `Edit ${title}`,
+      description: `Adjust the ${title} value for ${currentTariffType} tariffs effective ${currentEffectiveDate}.`,
+      label: title,
+      fieldName,
+      defaultValue,
+      isPercentage,
+    });
+    setIsFeeDialogOpen(true);
+  };
+
+  const handleUpdateFee = async (fieldName: keyof TariffInfo, value: number, isPercentage: boolean) => {
+    if (!activeTariffInfo) return;
+
+    let finalValue = value;
+    if (isPercentage) {
+      finalValue = value / 100; // Convert back to decimal for storage
+    }
+
+    const updatePayload: Partial<TariffInfo> = {
+      [fieldName]: finalValue,
+    };
+
+    const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.effective_date!, updatePayload as any);
+
+    if (result.success) {
+      toast({ title: "Fee Updated", description: `${feeDialogConfig?.title} has been updated.` });
+      setIsFeeDialogOpen(false);
+    } else {
+      toast({ variant: "destructive", title: "Update Failed", description: result.message });
+    }
+  };
+
+  const handleResetFee = async (fieldName: keyof TariffInfo, feeName: string) => {
+    if (!activeTariffInfo) return;
+
+    // Determine a sensible default for resetting. For percentages, 0. For thresholds, 0.
+    let resetValue: number;
+    switch (fieldName) {
+      case 'maintenance_percentage':
+      case 'sanitation_percentage':
+      case 'vat_rate':
+        resetValue = 0; // Or a system default if one exists
+        break;
+      case 'domestic_vat_threshold_m3':
+        resetValue = 0;
+        break;
+      default:
+        resetValue = 0;
+    }
+
+    const updatePayload: Partial<TariffInfo> = {
+      [fieldName]: resetValue,
+    };
+
+    const result = await updateTariff(activeTariffInfo.customer_type, activeTariffInfo.effective_date!, updatePayload as any);
+
+    if (result.success) {
+      toast({ title: "Fee Reset", description: `${feeName} has been reset to its default value.` });
+    } else {
+      toast({ variant: "destructive", title: "Reset Failed", description: result.message });
+    }
+  };
+
+  const handleCreateNewVersion = async () => {
+    if (!activeTariffInfo) return;
+
+    // Default to next month's 1st
+    const nextDate = new Date(currentEffectiveDate);
+    nextDate.setMonth(nextDate.getMonth() + 1);
+    const newEffectiveDate = nextDate.toISOString().split('T')[0];
+
+    const result = await addTariff({
+      ...activeTariffInfo,
+      effective_date: newEffectiveDate,
+    });
+
+    if (result.success) {
+      toast({ title: "New Tariff Version Created", description: `Successfully created a new version effective ${newEffectiveDate}.` });
+      setCurrentEffectiveDate(newEffectiveDate);
     } else {
       toast({ variant: "destructive", title: "Creation Failed", description: result.message });
     }
@@ -337,8 +478,8 @@ export default function TariffManagementPage() {
         </div>
         {canUpdateTariffs && (
           <div className="flex gap-2 flex-wrap">
-            <Button onClick={handleCreateNewYearTariff} variant="outline" disabled={!activeTariffInfo}>
-              <Copy className="mr-2 h-4 w-4" /> Copy to {currentYear + 1}
+            <Button onClick={handleCreateNewVersion} variant="outline" disabled={!activeTariffInfo}>
+              <PlusCircle className="mr-2 h-4 w-4" /> New Version
             </Button>
             <Button onClick={() => setIsMeterRentDialogOpen(true)} variant="default" disabled={!activeTariffInfo}>
               <DollarSign className="mr-2 h-4 w-4" /> Manage Meter Rent
@@ -349,17 +490,17 @@ export default function TariffManagementPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="tariff-year">Select Year</Label>
+          <Label htmlFor="tariff-date">Select Effective Date</Label>
           <Select
-            value={String(currentYear)}
-            onValueChange={(value) => setCurrentYear(Number(value))}
+            value={currentEffectiveDate}
+            onValueChange={setCurrentEffectiveDate}
           >
-            <SelectTrigger id="tariff-year" className="w-full md:w-[200px]">
-              <SelectValue placeholder="Select a year" />
+            <SelectTrigger id="tariff-date" className="w-full md:w-[200px]">
+              <SelectValue placeholder="Select a date" />
             </SelectTrigger>
             <SelectContent>
-              {yearOptions.map(year => (
-                <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+              {availableDates.map(date => (
+                <SelectItem key={`tariff-date-${date}`} value={date}>{date}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -384,14 +525,14 @@ export default function TariffManagementPage() {
       </div>
 
       {isDataLoading ? <p>Loading tariffs...</p> : !activeTariffInfo ?
-        (<Card className="shadow-lg mt-4 border-dashed border-amber-500"><CardHeader><CardTitle className="text-amber-600">No Tariff Found</CardTitle><CardDescription>There is no tariff data for {currentTariffType} for the year {currentYear}. You can create one by copying settings from another year.</CardDescription></CardHeader></Card>) : (
+        (<Card className="shadow-lg mt-4 border-dashed border-amber-500"><CardHeader><CardTitle className="text-amber-600">No Tariff Found</CardTitle><CardDescription>There is no tariff data for {currentTariffType} effective on {currentEffectiveDate}.</CardDescription></CardHeader></Card>) : (
           <>
             <Card className="shadow-lg mt-4">
               <CardHeader>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <ListChecks className="h-6 w-6 text-primary" />
-                    <CardTitle>Current Water Tariff Rates ({currentTariffType} - {currentYear})</CardTitle>
+                    <CardTitle>Current Water Tariff Rates ({currentTariffType} - {activeTariffInfo?.effective_date || ''})</CardTitle>
                   </div>
                   {canUpdateTariffs && (
                     <Button onClick={() => handleAddTier('water')} size="sm">
@@ -421,7 +562,7 @@ export default function TariffManagementPage() {
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Percent className="h-6 w-6 text-primary" />
-                  <CardTitle>Fees &amp; Charges ({currentTariffType} - {currentYear})</CardTitle>
+                  <CardTitle>Fees &amp; Charges ({currentTariffType} - {activeTariffInfo?.effective_date || ''})</CardTitle>
                 </div>
                 <CardDescription>
                   Additional fees and taxes applied during bill calculation.
@@ -431,28 +572,124 @@ export default function TariffManagementPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div className="flex justify-between items-center p-2 rounded-md bg-muted/50">
-                      <span className="text-muted-foreground">Maintenance Fee</span>
-                      <span className="font-semibold">{(activeTariffInfo.maintenance_percentage * 100).toFixed(0)}% of Base Water Charge</span>
-                    </div>
-                    <div className="flex justify-between items-center p-2 rounded-md bg-muted/50">
-                      <span className="text-muted-foreground">Sanitation Fee</span>
-                      <span className="font-semibold">{(activeTariffInfo.sanitation_percentage * 100).toFixed(0)}% of Base Water Charge</span>
-                    </div>
-                    <div className="flex justify-between items-center p-2 rounded-md bg-muted/50">
-                      <span className="text-muted-foreground">Meter Rent Fee</span>
-                      <span className="font-semibold text-muted-foreground italic">Varies by meter size. Managed via "Manage Meter Rent" button.</span>
-                    </div>
-                    <div className="flex justify-between items-center p-2 rounded-md bg-muted/50 border border-primary/20">
-                      <div className="flex-1 pr-4">
-                        <span className="text-muted-foreground">VAT</span>
-                        {currentTariffType === 'Domestic' && (
-                          <p className="text-xs text-muted-foreground italic">For Domestic customers, VAT only applies if consumption is &gt; {activeTariffInfo.domestic_vat_threshold_m3} m³.</p>
-                        )}
+                      <div className="flex flex-col">
+                        <span className="text-muted-foreground text-sm">Maintenance Fee</span>
+                        <span className="font-semibold">{(activeTariffInfo.maintenance_percentage * 100).toFixed(0)}% of Base Water Charge</span>
                       </div>
-                      <span className="font-semibold text-primary text-right">{(activeTariffInfo.vat_rate * 100).toFixed(0)}%</span>
+                      {canUpdateTariffs && (
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleOpenFeeDialog('maintenance_percentage', 'Maintenance Fee')}>
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => handleResetFee('maintenance_percentage', 'Maintenance Fee')}>
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center p-2 rounded-md bg-muted/50">
+                      <div className="flex flex-col">
+                        <span className="text-muted-foreground text-sm">Sanitation Fee</span>
+                        <span className="font-semibold">{(activeTariffInfo.sanitation_percentage * 100).toFixed(0)}% of Base Water Charge</span>
+                      </div>
+                      {canUpdateTariffs && (
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleOpenFeeDialog('sanitation_percentage', 'Sanitation Fee')}>
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => handleResetFee('sanitation_percentage', 'Sanitation Fee')}>
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center p-2 rounded-md bg-muted/50">
+                      <div className="flex flex-col">
+                        <span className="text-muted-foreground text-sm">Meter Rent Fee</span>
+                        <span className="font-semibold text-xs italic text-muted-foreground">Managed via "Manage Meter Rent"</span>
+                      </div>
+                      {canUpdateTariffs && (
+                        <Button size="sm" variant="outline" className="h-8" onClick={() => setIsMeterRentDialogOpen(true)}>
+                          Configure
+                        </Button>
+                      )}
                     </div>
                   </div>
 
+                  <div className="space-y-2 mt-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="font-medium text-sm text-muted-foreground">Additional Custom Fees</h4>
+                      {canUpdateTariffs && (
+                        <Button onClick={() => handleOpenAdditionalFeeDialog()} size="sm" variant="outline">
+                          <PlusCircle className="mr-2 h-4 w-4" /> Add Fee
+                        </Button>
+                      )}
+                    </div>
+                    {activeTariffInfo.additional_fees && activeTariffInfo.additional_fees.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {activeTariffInfo.additional_fees.map((fee, idx) => (
+                          <div key={`custom-fee-${idx}`} className="p-3 border rounded-md group bg-muted/20 hover:bg-muted/40 transition-colors">
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <div className="font-semibold text-sm">{fee.name}</div>
+                                <div className="text-primary font-bold">
+                                  {fee.type === 'percentage' ? `${(fee.value * 100).toFixed(1)}%` : `${fee.value} ETB`}
+                                  <span className="text-xs text-muted-foreground font-normal ml-1">
+                                    {fee.type === 'percentage' ? "of base charge" : "fixed"}
+                                  </span>
+                                </div>
+                              </div>
+                              {canUpdateTariffs && (
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleOpenAdditionalFeeDialog(fee, idx)}>
+                                    <Edit2 className="h-3 w-3" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteAdditionalFee(idx)}>
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground italic p-2 border border-dashed rounded-md text-center">
+                        No additional custom fees defined.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4 mt-6">
+                    <div className="p-3 border rounded-md relative group">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-lg">VAT</span>
+                            <span className="text-primary font-bold">{(activeTariffInfo.vat_rate * 100).toFixed(0)}%</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {currentTariffType === 'Domestic' || currentTariffType === 'rental domestic'
+                              ? `VAT only applies if consumption is > ${activeTariffInfo.domestic_vat_threshold_m3 || 0} m³.`
+                              : "VAT applies to all bills for this category."
+                            }
+                          </p>
+                        </div>
+                        {canUpdateTariffs && (
+                          <div className="flex gap-1">
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleOpenFeeDialog('vat_rate', 'VAT Rate')}>
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            {currentTariffType === 'Domestic' && (
+                              <Button size="icon" variant="ghost" className="h-8 w-8" title="Edit Threshold" onClick={() => handleOpenFeeDialog('domestic_vat_threshold_m3', 'VAT Threshold', false)}>
+                                <ListChecks className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <div className="flex justify-between items-center mb-2">
                       <h4 className="font-medium text-sm text-muted-foreground">Sewerage Fee (if applicable)</h4>
@@ -495,12 +732,34 @@ export default function TariffManagementPage() {
           <MeterRentDialog
             open={isMeterRentDialogOpen}
             onOpenChange={setIsMeterRentDialogOpen}
-            onSubmit={handleSaveMeterRents}
+            onSubmit={handleUpdateMeterRent}
             defaultPrices={activeTariffInfo.meter_rent_prices as { [key: string]: number }}
             currency="ETB"
-            year={currentYear}
+            year={currentEffectiveDate}
             canUpdate={canUpdateTariffs}
           />
+
+          <AdditionalFeeDialog
+            open={isAdditionalFeeDialogOpen}
+            onOpenChange={setIsAdditionalFeeDialogOpen}
+            onSubmit={handleUpdateAdditionalFee}
+            initialData={editingAdditionalFee?.fee}
+            isEditing={!!editingAdditionalFee}
+          />
+
+          {feeDialogConfig && (
+            <FeeEditDialog
+              open={isFeeDialogOpen}
+              onOpenChange={setIsFeeDialogOpen}
+              onSubmit={(value) => handleUpdateFee(feeDialogConfig.fieldName, value, feeDialogConfig.isPercentage)}
+              title={feeDialogConfig.title}
+              description={feeDialogConfig.description}
+              label={feeDialogConfig.label}
+              defaultValue={feeDialogConfig.defaultValue}
+              isPercentage={feeDialogConfig.isPercentage}
+              canUpdate={canUpdateTariffs}
+            />
+          )}
           <AlertDialog open={!!rateToDelete} onOpenChange={(open) => !open && setRateToDelete(null)}>
             <AlertDialogContent>
               <AlertDialogHeader>

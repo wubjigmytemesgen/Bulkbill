@@ -52,7 +52,6 @@ const UNASSIGNED_BULK_METER_VALUE = "_SELECT_NONE_BULK_METER_";
 
 export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividualCustomerEntryFormProps) {
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = React.useState<StaffMember | null>(null);
   const [availableBulkMeters, setAvailableBulkMeters] = React.useState<{ customerKeyNumber: string, name: string }[]>([]);
   const [isLoadingBulkMeters, setIsLoadingBulkMeters] = React.useState(true);
   const [staffBranchId, setStaffBranchId] = React.useState<string | undefined>(undefined);
@@ -63,6 +62,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
       assignedBulkMeterId: UNASSIGNED_BULK_METER_VALUE,
       name: "",
       customerKeyNumber: "",
+      instKey: "",
       contractNumber: "",
       customerType: undefined,
       bookNumber: "",
@@ -84,9 +84,6 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
   const actualBulkMeterIsSelected = assignedBulkMeterIdValue !== UNASSIGNED_BULK_METER_VALUE && !!assignedBulkMeterIdValue;
 
   React.useEffect(() => {
-    const userJson = localStorage.getItem('user');
-    if (userJson) setCurrentUser(JSON.parse(userJson));
-
     setIsLoadingBulkMeters(true);
     Promise.all([
       initializeBulkMeters(),
@@ -125,19 +122,14 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
   }, [staffBranchId, form]);
 
   async function onSubmit(data: StaffEntryFormValues) {
-    if (!currentUser) {
-      toast({ variant: 'destructive', title: 'Error', description: 'User information not found.' });
-      return;
-    }
-
     const submissionData = {
       ...data,
       assignedBulkMeterId: data.assignedBulkMeterId === UNASSIGNED_BULK_METER_VALUE ? undefined : data.assignedBulkMeterId,
       branchId: staffBranchId, // Ensure branchId is set from state
     };
 
-    // Status will be set to 'Pending Approval' by addCustomerToStore
-    const result = await addCustomerToStore(submissionData as Omit<IndividualCustomer, 'created_at' | 'updated_at' | 'calculatedBill' | 'arrears' | 'status' | 'paymentStatus'>, currentUser);
+    // Status will be set to 'Pending Approval' by addCustomerToStore server action
+    const result = await addCustomerToStore(submissionData as Omit<IndividualCustomer, 'created_at' | 'updated_at' | 'calculatedBill' | 'arrears' | 'status' | 'paymentStatus'>);
     if (result.success && result.data) {
       toast({
         title: "Data Entry Submitted for Approval",
@@ -147,6 +139,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
         assignedBulkMeterId: UNASSIGNED_BULK_METER_VALUE,
         name: "",
         customerKeyNumber: "",
+        instKey: "",
         contractNumber: "",
         customerType: undefined,
         bookNumber: "",
@@ -229,6 +222,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name *</FormLabel><FormControl><Input {...field} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
             <FormField control={form.control} name="customerKeyNumber" render={({ field }) => (<FormItem><FormLabel>Cust. Key No. *</FormLabel><FormControl><Input {...field} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField control={form.control} name="instKey" render={({ field }) => (<FormItem><FormLabel>INST_KEY *</FormLabel><FormControl><Input {...field} placeholder="e.g., INST-12345" disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
             <FormField control={form.control} name="contractNumber" render={({ field }) => (<FormItem><FormLabel>Contract No. *</FormLabel><FormControl><Input {...field} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
 
             <FormField control={form.control} name="customerType" render={({ field }) => (<FormItem><FormLabel>Customer Type *</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={commonFieldDisabled}><FormControl><SelectTrigger disabled={commonFieldDisabled}><SelectValue placeholder="Select type" /></SelectTrigger></FormControl><SelectContent>{customerTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
@@ -259,7 +253,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
                 </FormItem>
               )}
             />
-            <FormField control={form.control} name="meterNumber" render={({ field }) => (<FormItem><FormLabel>Meter No. *</FormLabel><FormControl><Input {...field} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField control={form.control} name="meterNumber" render={({ field }) => (<FormItem><FormLabel>METER_KEY *</FormLabel><FormControl><Input {...field} placeholder="e.g., MET-2822965" disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
             <FormField control={form.control} name="previousReading" render={({ field }) => (<FormItem><FormLabel>Previous Reading *</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
 
             <FormField control={form.control} name="currentReading" render={({ field }) => (<FormItem><FormLabel>Current Reading *</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />

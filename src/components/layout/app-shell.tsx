@@ -34,10 +34,10 @@ import { NotificationBell } from './notification-bell';
 import { ChatbotWidget } from '@/components/chatbot-widget';
 
 interface UserProfile {
-  id: string; 
+  id: string;
   email: string;
   role: string;
-  roleId?: number; 
+  roleId?: number;
   permissions?: string[];
   branchName?: string;
   branchId?: string;
@@ -45,14 +45,14 @@ interface UserProfile {
 }
 
 interface AppHeaderContentProps {
-   user: UserProfile | null;
-   appName?: string;
-   onLogout: () => void;
+  user: UserProfile | null;
+  appName?: string;
+  onLogout: () => void;
 }
 
 function AppHeaderContent({ user, appName = "AAWSA Billing Portal", onLogout }: AppHeaderContentProps) {
   const { isMobile, state: sidebarState } = useSidebar();
-  
+
   let dashboardHref = "/";
   if (user) {
     const role = user.role.toLowerCase();
@@ -63,43 +63,57 @@ function AppHeaderContent({ user, appName = "AAWSA Billing Portal", onLogout }: 
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
-      {isMobile ? (
-        <SidebarTrigger className="sm:hidden -ml-2">
-          <Menu className="h-5 w-5" />
-          <span className="sr-only">Toggle Menu</span>
-        </SidebarTrigger>
-      ) : (
-        <SidebarTrigger className={cn(sidebarState === "expanded" && "group-data-[collapsible=icon]:hidden")}/>
-      )}
+    <header className={cn(
+      "sticky top-0 z-30 flex h-16 items-center gap-4 border-b px-4 transition-all no-print",
+      "bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-md sm:px-6"
+    )}>
+      <SidebarTrigger className="text-white hover:bg-white/20 -ml-2 h-10 w-10">
+        <Menu className="h-6 w-6" />
+        <span className="sr-only">Toggle Menu</span>
+      </SidebarTrigger>
 
       <div className="flex flex-1 items-center justify-between">
-        <Link href={dashboardHref} className="flex items-center gap-2 text-lg font-semibold">
-          <Image
-            src="https://veiethiopia.com/photo/partner/par2.png"
-            alt="AAWSA Logo"
-            width={48}
-            height={30}
-            className="flex-shrink-0" 
-          />
-          <span className="hidden sm:inline-block">{appName}</span>
+        <Link href={dashboardHref} className="flex items-center gap-2 text-lg font-bold truncate">
+          <div className="bg-white p-1 rounded-sm shadow-sm flex items-center justify-center">
+            <Image
+              src="https://veiethiopia.com/photo/partner/par2.png"
+              alt="AAWSA Logo"
+              width={36}
+              height={22}
+              className="flex-shrink-0 transition-transform active:scale-95"
+            />
+          </div>
+          <span className="truncate transition-colors text-white text-base md:text-lg">
+            AAWSA Bulk Bill
+          </span>
         </Link>
-        <div className="flex items-center gap-4">
-          {user && <NotificationBell user={user} />}
+        <div className="flex items-center gap-3">
+          {user && <NotificationBell user={user} className="text-white hover:bg-white/10" />}
           {user && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="overflow-hidden rounded-full h-8 w-8">
-                  <UserCircle className="h-5 w-5" />
+                <Button variant="ghost" size="icon" className="overflow-hidden rounded-full h-9 w-9 text-white hover:bg-white/20">
+                  <UserCircle className="h-6 w-6" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel className="truncate max-w-[200px]">{user.name || user.email}</DropdownMenuLabel>
-                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal -mt-2">
-                  Role: {user.role}
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none truncate">{user.name || user.email}</p>
+                    <p className="text-xs leading-none text-muted-foreground truncate">{user.email}</p>
+                  </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onLogout}>
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                  Role: {user.role}
+                </DropdownMenuLabel>
+                {user.branchName && (
+                  <DropdownMenuLabel className="text-xs text-muted-foreground font-normal -mt-2">
+                    Branch: {user.branchName}
+                  </DropdownMenuLabel>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onLogout} className="text-destructive focus:text-destructive">
                   <LogOut className="mr-2 h-4 w-4" />
                   Logout
                 </DropdownMenuItem>
@@ -132,21 +146,21 @@ export function AppShell({ user, userRole, sidebar, children }: { user: UserProf
     if (typeof window === 'undefined' || !window.localStorage) {
       return;
     }
-    
+
     const storedAppName = window.localStorage.getItem("aawsa-app-name");
     if (storedAppName) {
       setAppName(storedAppName);
       document.title = storedAppName;
     }
-    
+
     const storedDarkMode = window.localStorage.getItem("aawsa-dark-mode-default");
     document.documentElement.classList.toggle('dark', storedDarkMode === "true");
 
   }, []);
-  
+
   return (
     <SidebarProvider defaultOpen>
-  <Sidebar variant="sidebar" collapsible="icon" className={cn("border-r border-sidebar-border bg-sidebar text-sidebar-foreground no-print")}>
+      <Sidebar variant="sidebar" collapsible="icon" className={cn("border-r border-sidebar-border bg-sidebar text-sidebar-foreground no-print")}>
         <SidebarHeader className="p-2">
         </SidebarHeader>
         <SidebarContent>
@@ -154,7 +168,7 @@ export function AppShell({ user, userRole, sidebar, children }: { user: UserProf
         </SidebarContent>
 
       </Sidebar>
-      <SidebarInset> 
+      <SidebarInset>
         <AppHeaderContent user={user} appName={appName} onLogout={handleLogout} />
         <main className="flex-1 p-4 sm:p-6 space-y-6 bg-background">
           {children}

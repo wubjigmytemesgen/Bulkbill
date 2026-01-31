@@ -82,8 +82,8 @@ export default function StaffSentBillsReportPage() {
             if (bill.individualCustomerId) {
                 return directBranchCustomerKeys.has(bill.individualCustomerId) || indirectBranchCustomerKeys.has(bill.individualCustomerId);
             }
-            if (bill.bulkMeterId) {
-                return branchBulkMeterKeys.has(bill.bulkMeterId);
+            if (bill.CUSTOMERKEY) {
+                return branchBulkMeterKeys.has(bill.CUSTOMERKEY);
             }
             return false;
         });
@@ -95,7 +95,7 @@ export default function StaffSentBillsReportPage() {
     if (searchTerm) {
       const lowercasedTerm = searchTerm.toLowerCase();
       visibleBills = visibleBills.filter(bill => {
-        const customerKey = bill.individualCustomerId || bill.bulkMeterId;
+        const customerKey = bill.individualCustomerId || bill.CUSTOMERKEY;
         return customerKey?.toLowerCase().includes(lowercasedTerm);
       });
     }

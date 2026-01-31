@@ -150,6 +150,17 @@ DECLARE
         'meter_readings_create,Manually enter or upload meter readings,Data & Reports',
         'reports_generate_all,Generate and view reports with data from all branches,Data & Reports',
         'reports_generate_branch,Generate and view reports for the user''s branch,Data & Reports',
+        -- Billing Workflow
+        'bill:view_drafts,View draft bills in the assigned branch,Billing Workflow',
+        'bill:create,Create new bills for customers or bulk meters,Billing Workflow',
+        'bill:update,Update existings bill readings,Billing Workflow',
+        'bill:submit,Submit bills for manager approval,Billing Workflow',
+        'bill:approve,Approve submitted bills,Billing Workflow',
+        'bill:rework,Send bills back for rework,Billing Workflow',
+        'bill:post,Post and finalize approved bills,Billing Workflow',
+        'bill:view_paid,View paid bills history,Billing Workflow',
+        'bill:view_awaiting_payment,View bills awaiting payment,Billing Workflow',
+        'bill:view_overdue,View overdue bills,Billing Workflow',
         -- Notifications
         'notifications_view,View system notifications,Notifications',
         'notifications_create,Send notifications to all staff or specific branches,Notifications',
@@ -212,7 +223,14 @@ BEGIN
         'bulk_meters_view_all',
         'reports_generate_all',
         'notifications_view',
-        'notifications_create' -- Added permission to send
+        'notifications_create', -- Added permission to send
+        'bill:view_drafts',
+        'bill:approve',
+        'bill:rework',
+        'bill:post',
+        'bill:view_paid',
+        'bill:view_awaiting_payment',
+        'bill:view_overdue'
     ) ON CONFLICT DO NOTHING;
     
     -- Assign permissions for Staff Management
@@ -224,7 +242,9 @@ BEGIN
         'customers_view_branch', 'customers_create', 'customers_update', 'customers_delete',
         'bulk_meters_view_branch', 'bulk_meters_create', 'bulk_meters_update', 'bulk_meters_delete',
         'data_entry_access', 'meter_readings_view_branch', 'meter_readings_create', 'reports_generate_branch',
-        'notifications_view', 'notifications_create'
+        'notifications_view', 'notifications_create',
+        'bill:view_drafts', 'bill:create', 'bill:update', 'bill:submit', 'bill:approve', 'bill:rework', 'bill:post',
+        'bill:view_paid', 'bill:view_awaiting_payment', 'bill:view_overdue'
     ) ON CONFLICT DO NOTHING;
 
     -- Assign permissions for Staff
@@ -237,7 +257,9 @@ BEGIN
         'data_entry_access',
         'meter_readings_view_branch', 'meter_readings_create',
         'reports_generate_branch',
-        'notifications_view'
+        'notifications_view',
+        'bill:view_drafts', 'bill:create', 'bill:update', 'bill:submit', 'bill:rework',
+        'bill:view_paid', 'bill:view_awaiting_payment', 'bill:view_overdue'
     ) ON CONFLICT DO NOTHING;
 
 END;

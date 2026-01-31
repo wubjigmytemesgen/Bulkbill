@@ -8,6 +8,12 @@ export type SewerageConnection = (typeof sewerageConnections)[number];
 export const paymentStatuses = ['Paid', 'Unpaid', 'Pending'] as const;
 export type PaymentStatus = (typeof paymentStatuses)[number];
 
+export interface AdditionalFee {
+    name: string;
+    value: number;
+    type: 'percentage' | 'flat';
+}
+
 export interface TariffTier {
     rate: number;
     limit: number | "Infinity";
@@ -20,7 +26,7 @@ export interface SewerageTier {
 
 export interface TariffInfo {
     customer_type: CustomerType;
-    year: number;
+    effective_date: string; // ISO Date string
     tiers: TariffTier[];
     sewerage_tiers: SewerageTier[];
     maintenance_percentage: number;
@@ -28,6 +34,7 @@ export interface TariffInfo {
     meter_rent_prices: { [key: string]: number; };
     vat_rate: number;
     domestic_vat_threshold_m3: number;
+    additional_fees: AdditionalFee[];
 }
 
 export interface BillCalculationResult {
@@ -38,6 +45,8 @@ export interface BillCalculationResult {
     vatAmount: number;
     meterRent: number;
     sewerageCharge: number;
+    additionalFeesCharge: number;
+    additionalFeesBreakdown?: Array<{ name: string; charge: number }>;
     waterTierBreakdown?: Array<{ start: number; end: number | typeof Infinity; usage: number; rate: number; charge: number }>;
     sewerageTierBreakdown?: Array<{ start: number; end: number | typeof Infinity; usage: number; rate: number; charge: number }>;
 }
@@ -80,15 +89,19 @@ export const safeParseJsonField = <T>(field: any, fieldName: string, expectedTyp
  */
 export function calculateBillFromTariff(
     tariffConfig: TariffInfo,
-    usageM3: number,
+    CONS: number,
     meterSize: number,
     sewerageConnection: SewerageConnection,
-    sewerageUsageM3?: number,
-    baseWaterChargeUsageM3?: number
+    sewerageCONS?: number,
+    baseWaterChargeCONS?: number
 ): BillCalculationResult {
-    const emptyResult: BillCalculationResult = { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, vatAmount: 0, meterRent: 0, sewerageCharge: 0 };
+    const emptyResult: BillCalculationResult = {
+        totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0,
+        sanitationFee: 0, vatAmount: 0, meterRent: 0, sewerageCharge: 0,
+        additionalFeesCharge: 0
+    };
 
-    const usageForBaseWaterCharge = baseWaterChargeUsageM3 !== undefined ? baseWaterChargeUsageM3 : usageM3;
+    const usageForBaseWaterCharge = baseWaterChargeCONS !== undefined ? baseWaterChargeCONS : CONS;
     if (usageForBaseWaterCharge < 0) return emptyResult;
 
     const sortedTiers = (tariffConfig.tiers || []).sort((a, b) => {
@@ -101,44 +114,87 @@ export function calculateBillFromTariff(
 
     let baseWaterCharge = 0;
     const customerType = tariffConfig.customer_type;
+    const waterTierBreakdown: Array<{ start: number; end: number | typeof Infinity; usage: number; rate: number; charge: number }> = [];
 
     if (customerType === 'Domestic') {
         let remainingUsage = usageForBaseWaterCharge;
         let lastLimit = 0;
         for (const tier of sortedTiers) {
-            if (remainingUsage <= 0) break;
+            if (remainingUsage <= 0 && lastLimit > 0) break; // Optimization but keep checking if you want to show 0 usage tiers? Usually only non-zero.
+            // Actually, better to show all tiers or just used? Typically just used or up to the current one.
+            // Let's just loop until remaining is 0, but we might want to capture the 0 usage tiers if they are "below" the current bracket? 
+            // Standard logic: fill buckets.
+
             const tierLimit = tier.limit === "Infinity" ? Infinity : Number(tier.limit);
             const tierRate = Number(tier.rate);
             const tierBlockSize = tierLimit - lastLimit;
-            const usageInThisTier = Math.min(remainingUsage, tierBlockSize);
+
+            let usageInThisTier = 0;
+            if (remainingUsage > 0) {
+                usageInThisTier = Math.min(remainingUsage, tierBlockSize);
+            }
+
             baseWaterCharge += usageInThisTier * tierRate;
+
+            if (usageInThisTier > 0 || remainingUsage > 0) { // Only push if we touch this tier or it's a lower tier we passed
+                waterTierBreakdown.push({
+                    start: lastLimit,
+                    end: tierLimit,
+                    usage: usageInThisTier,
+                    rate: tierRate,
+                    charge: usageInThisTier * tierRate
+                });
+            }
+
             remainingUsage -= usageInThisTier;
             lastLimit = tierLimit;
+            if (remainingUsage <= 0 && usageInThisTier === 0) break;
         }
     } else if (customerType === 'rental domestic' || customerType === 'rental Non domestic') {
+        let rate = 0;
         if (sortedTiers.length >= 4) {
-            const fourthTierRate = Number(sortedTiers[3].rate);
-            baseWaterCharge = Number(usageForBaseWaterCharge) * fourthTierRate;
+            rate = Number(sortedTiers[3].rate);
         } else if (sortedTiers.length > 0) {
-            // Fallback if less than 4 tiers are defined, use the highest tier.
-            const highestTierRate = Number(sortedTiers[sortedTiers.length - 1].rate);
-            baseWaterCharge = Number(usageForBaseWaterCharge) * highestTierRate;
+            rate = Number(sortedTiers[sortedTiers.length - 1].rate);
         }
+        baseWaterCharge = Number(usageForBaseWaterCharge) * rate;
+        waterTierBreakdown.push({
+            start: 0,
+            end: Infinity,
+            usage: usageForBaseWaterCharge,
+            rate: rate,
+            charge: baseWaterCharge
+        });
     } else if (customerType === 'Non-domestic') {
         let applicableRate = 0;
+        let found = false;
         for (const tier of sortedTiers) {
             const tierLimit = tier.limit === "Infinity" ? Infinity : Number(tier.limit);
             applicableRate = Number(tier.rate);
-            if (usageForBaseWaterCharge <= tierLimit) break;
+            if (usageForBaseWaterCharge <= tierLimit) {
+                found = true;
+                break;
+            }
         }
+        if (!found && sortedTiers.length > 0) {
+            applicableRate = Number(sortedTiers[sortedTiers.length - 1].rate);
+        }
+
         baseWaterCharge = Number(usageForBaseWaterCharge) * Number(applicableRate);
+        waterTierBreakdown.push({
+            start: 0,
+            end: Infinity,
+            usage: usageForBaseWaterCharge,
+            rate: applicableRate,
+            charge: baseWaterCharge
+        });
     }
 
     const maintenanceFee = (tariffConfig.maintenance_percentage || 0) * baseWaterCharge;
     const sanitationFee = (tariffConfig.sanitation_percentage || 0) * baseWaterCharge;
 
     let vatAmount = 0;
-    if ((customerType === 'Domestic' || customerType === 'rental domestic') && usageM3 > tariffConfig.domestic_vat_threshold_m3) {
+    if ((customerType === 'Domestic' || customerType === 'rental domestic') && CONS > tariffConfig.domestic_vat_threshold_m3) {
         vatAmount = baseWaterCharge * (tariffConfig.vat_rate || 0);
     } else if (customerType === 'Non-domestic' || customerType === 'rental Non domestic') {
         vatAmount = baseWaterCharge * (tariffConfig.vat_rate || 0);
@@ -190,7 +246,7 @@ export function calculateBillFromTariff(
         }
     }
 
-    const usageForSewerage = sewerageUsageM3 !== undefined ? sewerageUsageM3 : usageM3;
+    const usageForSewerage = sewerageCONS !== undefined ? sewerageCONS : CONS;
     let sewerageCharge = 0;
     if (sewerageConnection === "Yes" && tariffConfig.sewerage_tiers && tariffConfig.sewerage_tiers.length > 0) {
         const sortedSewerageTiers = tariffConfig.sewerage_tiers.sort((a, b) => (a.limit === "Infinity" ? Infinity : Number(a.limit)) - (b.limit === "Infinity" ? Infinity : Number(b.limit)));
@@ -218,7 +274,25 @@ export function calculateBillFromTariff(
         }
     }
 
-    const totalBill = baseWaterCharge + maintenanceFee + sanitationFee + vatAmount + meterRent + sewerageCharge;
+    const additionalFeesBreakdown: Array<{ name: string; charge: number }> = [];
+    let additionalFeesTotal = 0;
+
+    if (tariffConfig.additional_fees && Array.isArray(tariffConfig.additional_fees)) {
+        tariffConfig.additional_fees.forEach(fee => {
+            let feeCharge = 0;
+            if (fee.type === 'percentage') {
+                feeCharge = (fee.value || 0) * baseWaterCharge;
+            } else {
+                feeCharge = (fee.value || 0);
+            }
+            if (feeCharge > 0) {
+                additionalFeesBreakdown.push({ name: fee.name, charge: feeCharge });
+                additionalFeesTotal += feeCharge;
+            }
+        });
+    }
+
+    const totalBill = baseWaterCharge + maintenanceFee + sanitationFee + vatAmount + meterRent + sewerageCharge + additionalFeesTotal;
 
     return {
         totalBill: parseFloat(totalBill.toFixed(2)),
@@ -228,5 +302,8 @@ export function calculateBillFromTariff(
         vatAmount: parseFloat(vatAmount.toFixed(2)),
         meterRent: parseFloat(meterRent.toFixed(2)),
         sewerageCharge: parseFloat(sewerageCharge.toFixed(2)),
+        additionalFeesCharge: parseFloat(additionalFeesTotal.toFixed(2)),
+        additionalFeesBreakdown,
+        waterTierBreakdown,
     };
 }

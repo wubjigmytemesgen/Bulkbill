@@ -11,8 +11,22 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { TablePagination } from '@/components/ui/table-pagination';
-import { SecurityLog } from '@/types/supabase';
+import { SecurityLog } from '@/types/db';
 import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Eye, LogOut } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AuditLogDetails } from '@/components/audit-log-details';
 
 interface SecurityLogsResponse {
     logs: SecurityLog[];
@@ -20,6 +34,18 @@ interface SecurityLogsResponse {
     page: number;
     pageSize: number;
     lastPage: number;
+}
+
+interface CustomerSession {
+    id: string;
+    customer_key_number: string;
+    customer_type: string;
+    ip_address: string;
+    device_name: string;
+    location: string;
+    is_revoked: boolean;
+    last_active_at: string;
+    created_at: string;
 }
 
 export default function SecurityLogsPage() {
@@ -36,11 +62,14 @@ export default function SecurityLogsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const [sessions, setSessions] = useState<CustomerSession[]>([]);
+    const [sessionsLoading, setSessionsLoading] = useState(false);
+
     useEffect(() => {
-        const page = parseInt(searchParams.get('page') || '1', 10);
-        const size = parseInt(searchParams.get('pageSize') || '10', 10);
-        const sort = searchParams.get('sortBy') || 'created_at';
-        const order = (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc';
+        const page = parseInt(searchParams?.get('page') || '1', 10);
+        const size = parseInt(searchParams?.get('pageSize') || '10', 10);
+        const sort = searchParams?.get('sortBy') || 'created_at';
+        const order = (searchParams?.get('sortOrder') as 'asc' | 'desc') || 'desc';
 
         setCurrentPage(page);
         setPageSize(size);
@@ -71,21 +100,44 @@ export default function SecurityLogsPage() {
         }
     };
 
+    const fetchCustomerSessions = async () => {
+        setSessionsLoading(true);
+        try {
+            const { getActiveCustomerSessionsAction } = await import('@/lib/actions');
+            const { data } = await getActiveCustomerSessionsAction();
+            setSessions(data || []);
+        } catch (e) {
+            console.error('Failed to fetch sessions', e);
+        } finally {
+            setSessionsLoading(false);
+        }
+    };
+
+    const handleKickOut = async (sessionId: string) => {
+        try {
+            const { revokeCustomerSessionAction } = await import('@/lib/actions');
+            await revokeCustomerSessionAction(sessionId);
+            fetchCustomerSessions(); // Refresh the list
+        } catch (e) {
+            console.error('Failed to revoke session', e);
+        }
+    };
+
     const handlePageChange = (newPage: number) => {
-        const params = new URLSearchParams(searchParams.toString());
+        const params = new URLSearchParams(searchParams?.toString() || '');
         params.set('page', newPage.toString());
         router.push(`/admin/security-logs?${params.toString()}`);
     };
 
     const handlePageSizeChange = (newSize: number) => {
-        const params = new URLSearchParams(searchParams.toString());
+        const params = new URLSearchParams(searchParams?.toString() || '');
         params.set('pageSize', newSize.toString());
         params.set('page', '1'); // Reset to first page when page size changes
         router.push(`/admin/security-logs?${params.toString()}`);
     };
 
     const handleSort = (column: string) => {
-        const params = new URLSearchParams(searchParams.toString());
+        const params = new URLSearchParams(searchParams?.toString() || '');
         let newSortOrder: 'asc' | 'desc' = 'asc';
         if (sortBy === column) {
             newSortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
@@ -108,56 +160,179 @@ export default function SecurityLogsPage() {
     return (
         <div className="p-4">
             <h1 className="text-2xl font-bold mb-4">Security Log Entries</h1>
-            <div className="rounded-md border">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className="cursor-pointer" onClick={() => handleSort('created_at')}>
-                                Timestamp {getSortIndicator('created_at')}
-                            </TableHead>
-                            <TableHead className="cursor-pointer" onClick={() => handleSort('event')}>
-                                Event Type {getSortIndicator('event')}
-                            </TableHead>
-                            <TableHead className="cursor-pointer" onClick={() => handleSort('staff_email')}>
-                                Staff Email {getSortIndicator('staff_email')}
-                            </TableHead>
-                            <TableHead className="cursor-pointer" onClick={() => handleSort('ip_address')}>
-                                IP Address {getSortIndicator('ip_address')}
-                            </TableHead>
-                            <TableHead className="cursor-pointer" onClick={() => handleSort('branch_name')}>
-                                Branch Name {getSortIndicator('branch_name')}
-                            </TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {logs.length > 0 ? (
-                            logs.map((log) => (
-                                <TableRow key={log.id}>
-                                    <TableCell>{format(new Date(log.created_at), 'yyyy-MM-dd HH:mm:ss')}</TableCell>
-                                    <TableCell>{log.event}</TableCell>
-                                    <TableCell>{log.staff_email || 'N/A'}</TableCell>
-                                    <TableCell>{log.ip_address || 'N/A'}</TableCell>
-                                    <TableCell>{log.branch_name || 'N/A'}</TableCell>
+
+            <Tabs defaultValue="logs" className="w-full">
+                <TabsList>
+                    <TabsTrigger value="logs">Security Logs</TabsTrigger>
+                    <TabsTrigger value="sessions" onClick={() => fetchCustomerSessions()}>
+                        Customer Sessions
+                    </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="logs">
+                    <div className="rounded-md border">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="cursor-pointer" onClick={() => handleSort('created_at')}>
+                                        Timestamp {getSortIndicator('created_at')}
+                                    </TableHead>
+                                    <TableHead className="cursor-pointer" onClick={() => handleSort('event')}>
+                                        Event Type {getSortIndicator('event')}
+                                    </TableHead>
+                                    <TableHead className="cursor-pointer" onClick={() => handleSort('staff_email')}>
+                                        Staff Email {getSortIndicator('staff_email')}
+                                    </TableHead>
+                                    <TableHead>Customer Key</TableHead>
+                                    <TableHead className="cursor-pointer" onClick={() => handleSort('ip_address')}>
+                                        IP Address {getSortIndicator('ip_address')}
+                                    </TableHead>
+                                    <TableHead className="cursor-pointer" onClick={() => handleSort('branch_name')}>
+                                        Branch Name {getSortIndicator('branch_name')}
+                                    </TableHead>
+                                    <TableHead>Severity</TableHead>
+                                    <TableHead>Details</TableHead>
                                 </TableRow>
-                            ))
-                        ) : (
-                            <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center">
-                                    No security logs found.
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
-            <TablePagination
-                currentPage={currentPage}
-                pageSize={pageSize}
-                totalItems={totalLogs}
-                onPageChange={handlePageChange}
-                onPageSizeChange={handlePageSizeChange}
-                lastPage={lastPage}
-            />
+                            </TableHeader>
+                            <TableBody>
+                                {logs.length > 0 ? (
+                                    logs.map((log) => (
+                                        <TableRow key={log.id}>
+                                            <TableCell>{format(new Date(log.created_at), 'yyyy-MM-dd HH:mm:ss')}</TableCell>
+                                            <TableCell>{log.event}</TableCell>
+                                            <TableCell>{log.staff_email || 'N/A'}</TableCell>
+                                            <TableCell>{(log as any).customer_key_number || 'N/A'}</TableCell>
+                                            <TableCell>{log.ip_address || 'N/A'}</TableCell>
+                                            <TableCell>{log.branch_name || 'N/A'}</TableCell>
+                                            <TableCell>
+                                                <Badge variant={log.severity === 'Critical' ? 'destructive' : log.severity === 'Warning' ? 'secondary' : 'default'} className={log.severity === 'Warning' ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : ''}>
+                                                    {log.severity || 'Info'}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Dialog>
+                                                    <DialogTrigger asChild>
+                                                        <Button variant="ghost" size="sm"><Eye className="h-4 w-4 mr-1" /> View</Button>
+                                                    </DialogTrigger>
+                                                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                                                        <DialogHeader className="sr-only">
+                                                            <DialogTitle>Audit Log Details</DialogTitle>
+                                                            <DialogDescription>
+                                                                Detailed comparison of changes for security event: {log.event}
+                                                            </DialogDescription>
+                                                        </DialogHeader>
+                                                        <AuditLogDetails log={log} />
+                                                        <div className="flex justify-end pt-4 border-t mt-6">
+                                                            <DialogTrigger asChild>
+                                                                <Button variant="outline" className="bg-muted px-8">Close</Button>
+                                                            </DialogTrigger>
+                                                        </div>
+                                                    </DialogContent>
+                                                </Dialog>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="h-24 text-center">
+                                            No security logs found.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <TablePagination
+                        page={currentPage - 1} // Convert 1-based to 0-based
+                        rowsPerPage={pageSize}
+                        count={totalLogs}
+                        onPageChange={(p) => handlePageChange(p + 1)} // Convert 0-based back to 1-based
+                        onRowsPerPageChange={handlePageSizeChange}
+                    />
+                </TabsContent>
+
+                <TabsContent value="sessions">
+                    <div className="rounded-md border">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Customer Key</TableHead>
+                                    <TableHead>Type</TableHead>
+                                    <TableHead>IP Address</TableHead>
+                                    <TableHead>Device</TableHead>
+                                    <TableHead>Location</TableHead>
+                                    <TableHead>Pages Viewed</TableHead>
+                                    <TableHead>Last Active</TableHead>
+                                    <TableHead>Actions</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {sessionsLoading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="h-24 text-center">
+                                            Loading sessions...
+                                        </TableCell>
+                                    </TableRow>
+                                ) : sessions.length > 0 ? (
+                                    sessions.map((session) => {
+                                        // Get pages viewed for this customer from logs
+                                        const customerLogs = logs.filter(log =>
+                                            (log as any).customer_key_number === session.customer_key_number &&
+                                            log.event.startsWith('Viewed ')
+                                        );
+                                        const pagesViewed = [...new Set(customerLogs.map(log =>
+                                            log.event.replace('Viewed ', '')
+                                        ))];
+
+                                        return (
+                                            <TableRow key={session.id}>
+                                                <TableCell>{session.customer_key_number}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant="outline">
+                                                        {session.customer_type}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>{session.ip_address}</TableCell>
+                                                <TableCell>{session.device_name}</TableCell>
+                                                <TableCell>{session.location}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {pagesViewed.length > 0 ? (
+                                                            pagesViewed.map((page, idx) => (
+                                                                <Badge key={idx} variant="secondary" className="text-xs">
+                                                                    {page}
+                                                                </Badge>
+                                                            ))
+                                                        ) : (
+                                                            <span className="text-gray-400 text-xs">No pages viewed yet</span>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>{format(new Date(session.last_active_at), 'yyyy-MM-dd HH:mm:ss')}</TableCell>
+                                                <TableCell>
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        onClick={() => handleKickOut(session.id)}
+                                                    >
+                                                        <LogOut className="h-4 w-4 mr-1" /> Kick Out
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
+                                ) : (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="h-24 text-center">
+                                            No active customer sessions found.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

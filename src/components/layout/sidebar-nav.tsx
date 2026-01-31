@@ -14,15 +14,15 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
-import * as icons from 'lucide-react'; 
-import type { LucideProps } from 'lucide-react'; 
+import * as icons from 'lucide-react';
+import type { LucideProps } from 'lucide-react';
 import * as React from 'react';
 
 
 export interface NavItem {
   title: string;
   href: string;
-  iconName?: keyof typeof icons; 
+  iconName?: keyof typeof icons;
   disabled?: boolean;
   external?: boolean;
   label?: string;
@@ -67,9 +67,9 @@ function NavItemLink({ item, pathname }: { item: NavItem; pathname: string }) {
       tooltip={currentDisplayState === 'collapsed' && !isMobile ? item.title : undefined}
       asChild // SidebarMenuButton gets asChild
     >
-      <Link 
-        href={item.href} 
-        target={item.external ? '_blank' : undefined} 
+      <Link
+        href={item.href}
+        target={item.external ? '_blank' : undefined}
         rel={item.external ? 'noopener noreferrer' : undefined}
       >
         {linkContent}
@@ -103,8 +103,8 @@ export function SidebarNav({ items, className }: SidebarNavProps) {
             {group.items.map((item) => (
               <React.Fragment key={item.href}>
                 <SidebarMenuItem>
-                    <NavItemLink item={item} pathname={pathname ?? '/'} />
-                  </SidebarMenuItem>
+                  <NavItemLink item={item} pathname={pathname ?? '/'} />
+                </SidebarMenuItem>
                 {item.items && item.items.length > 0 && (
                   <SidebarMenuSub>
                     {item.items.map((subItem) => {

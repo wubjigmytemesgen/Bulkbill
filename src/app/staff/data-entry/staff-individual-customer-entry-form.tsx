@@ -63,6 +63,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
       assignedBulkMeterId: UNASSIGNED_BULK_METER_VALUE,
       name: "",
       customerKeyNumber: "",
+      instKey: "",
       contractNumber: "",
       customerType: undefined,
       bookNumber: "",
@@ -147,6 +148,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
         assignedBulkMeterId: UNASSIGNED_BULK_METER_VALUE,
         name: "",
         customerKeyNumber: "",
+        instKey: "",
         contractNumber: "",
         customerType: undefined,
         bookNumber: "",
@@ -229,6 +231,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name *</FormLabel><FormControl><Input {...field} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
             <FormField control={form.control} name="customerKeyNumber" render={({ field }) => (<FormItem><FormLabel>Cust. Key No. *</FormLabel><FormControl><Input {...field} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField control={form.control} name="instKey" render={({ field }) => (<FormItem><FormLabel>INST_KEY *</FormLabel><FormControl><Input {...field} placeholder="e.g., INST-12345" disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
             <FormField control={form.control} name="contractNumber" render={({ field }) => (<FormItem><FormLabel>Contract No. *</FormLabel><FormControl><Input {...field} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
 
             <FormField control={form.control} name="customerType" render={({ field }) => (<FormItem><FormLabel>Customer Type *</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={commonFieldDisabled}><FormControl><SelectTrigger disabled={commonFieldDisabled}><SelectValue placeholder="Select type" /></SelectTrigger></FormControl><SelectContent>{customerTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
@@ -259,7 +262,7 @@ export function StaffIndividualCustomerEntryForm({ branchName }: StaffIndividual
                 </FormItem>
               )}
             />
-            <FormField control={form.control} name="meterNumber" render={({ field }) => (<FormItem><FormLabel>Meter No. *</FormLabel><FormControl><Input {...field} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField control={form.control} name="meterNumber" render={({ field }) => (<FormItem><FormLabel>METER_KEY *</FormLabel><FormControl><Input {...field} placeholder="e.g., MET-2822965" disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
             <FormField control={form.control} name="previousReading" render={({ field }) => (<FormItem><FormLabel>Previous Reading *</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />
 
             <FormField control={form.control} name="currentReading" render={({ field }) => (<FormItem><FormLabel>Current Reading *</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} disabled={commonFieldDisabled} /></FormControl><FormMessage /></FormItem>)} />

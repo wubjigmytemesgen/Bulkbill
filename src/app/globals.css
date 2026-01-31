@@ -119,11 +119,12 @@ body {
 }
 
 .quick-access-btn:hover {
-  background-color: hsl(var(--accent)) !important;
-  color: hsl(var(--accent-foreground)) !important;
+  background-color: hsl(211 100% 95%) !important; /* Light blue background */
+  color: hsl(var(--primary)) !important; /* Keep blue text */
+  border-color: hsl(var(--primary)) !important;
 }
 .quick-access-btn:hover svg {
-  color: hsl(var(--accent-foreground)) !important;
+  color: hsl(var(--primary)) !important;
 }
 
 /* Dark mode overrides for Quick Access buttons */
@@ -135,11 +136,12 @@ body {
 }
 
 .dark .quick-access-btn:hover {
-  background-color: hsl(var(--accent)) !important;
-  color: hsl(var(--accent-foreground)) !important;
+  background-color: hsl(211 100% 15%) !important; /* Darker blue for light theme effect in dark mode */
+  color: hsl(var(--primary)) !important;
+  border-color: hsl(var(--primary)) !important;
 }
 .dark .quick-access-btn:hover svg {
-  color: hsl(var(--accent-foreground)) !important;
+  color: hsl(var(--primary)) !important;
 }
 
 /* Print specific styles */

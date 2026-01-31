@@ -40,6 +40,22 @@ export async function query(text: string, params?: any[]) {
   }
 }
 
+export async function withTransaction<T>(fn: (client: any) => Promise<T>): Promise<T> {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function closePool() {
   if (pool) {
     await pool.end();

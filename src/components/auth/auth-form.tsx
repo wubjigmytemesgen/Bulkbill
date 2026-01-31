@@ -26,7 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn, Eye, EyeOff } from "lucide-react";
-import { authenticateStaffMember } from "@/lib/data-store";
+import { loginAction } from "@/lib/auth-actions";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -53,23 +53,26 @@ export function AuthForm() {
 
   const onSubmit = async (values: LoginFormValues) => {
     setIsLoading(true);
-    
-    const { data: user, success, message } = await authenticateStaffMember(values.email, values.password);
 
-    if (success && user) {
+    // Create FormData for the server action
+    const formData = new FormData();
+    formData.append("email", values.email);
+    formData.append("password", values.password);
+
+    const result = await loginAction(formData);
+
+    if (result.success && result.user) {
       toast({
         title: "Login Successful",
         description: "Welcome back! Redirecting...",
       });
-      
-      // The user object now contains roleId and permissions
-      localStorage.setItem("user", JSON.stringify(user));
 
-      const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
-      localStorage.setItem('session_expires_at', String(Date.now() + INACTIVITY_TIMEOUT));
+      // Still storing minimal user info in localStorage for UI convenience (e.g., name display)
+      // but NOT for security checks anymore.
+      localStorage.setItem("user", JSON.stringify(result.user));
 
-      const role = user.role.toLowerCase();
-      
+      const role = result.user.role.toLowerCase();
+
       if (role === 'admin') {
         router.push("/admin/dashboard");
       } else if (role === 'head office management') {
@@ -84,7 +87,7 @@ export function AuthForm() {
       toast({
         variant: "destructive",
         title: "Login Failed",
-        description: message || "Invalid email or password.",
+        description: result.message || "Invalid email or password.",
       });
     }
 
@@ -133,10 +136,10 @@ export function AuthForm() {
                       />
                     </FormControl>
                     <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground"
-                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? (
                         <EyeOff className="h-5 w-5" />
@@ -150,11 +153,17 @@ export function AuthForm() {
               )}
             />
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Signing In..." : <> <LogIn className="mr-2 h-4 w-4"/> Sign In </>}
+              {isLoading ? "Signing In..." : <> <LogIn className="mr-2 h-4 w-4" /> Sign In </>}
             </Button>
           </form>
         </Form>
       </CardContent>
+      <CardFooter className="flex flex-col gap-2 border-t pt-6 bg-muted/20">
+        <div className="text-sm text-center text-muted-foreground">Are you a customer?</div>
+        <Button variant="outline" className="w-full" onClick={() => router.push("/customer-login")}>
+          Go to Customer Portal
+        </Button>
+      </CardFooter>
     </Card>
   );
 }

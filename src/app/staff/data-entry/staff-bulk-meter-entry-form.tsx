@@ -31,15 +31,9 @@ interface StaffBulkMeterEntryFormProps {
 
 export function StaffBulkMeterEntryForm({ branchName }: StaffBulkMeterEntryFormProps) {
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = React.useState<StaffMember | null>(null);
   const [staffBranchId, setStaffBranchId] = React.useState<string | undefined>(undefined);
 
   React.useEffect(() => {
-    const userJson = localStorage.getItem('user');
-    if (userJson) {
-      setCurrentUser(JSON.parse(userJson));
-    }
-
     initializeBranches().then(() => {
       const allBranches = getBranches();
       const normalizedStaffBranchName = branchName.trim().toLowerCase();
@@ -78,17 +72,12 @@ export function StaffBulkMeterEntryForm({ branchName }: StaffBulkMeterEntryFormP
   });
 
   async function onSubmit(data: BulkMeterDataEntryFormValues) {
-    if (!currentUser) {
-      toast({ variant: 'destructive', title: "Authentication Error", description: "Could not identify current user." });
-      return;
-    }
-
     const bulkMeterDataForStore = {
       ...data,
       branchId: staffBranchId,
     };
 
-    const result = await addBulkMeterToStore(bulkMeterDataForStore, currentUser);
+    const result = await addBulkMeterToStore(bulkMeterDataForStore);
 
     if (result.success && result.data) {
       toast({

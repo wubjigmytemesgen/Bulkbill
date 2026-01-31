@@ -1,11 +1,11 @@
 "use server";
 
-import { dbGetTariffByTypeAndYear } from '@/lib/db-queries';
-import type { CustomerType, SewerageConnection, BillCalculationResult, TariffInfo, TariffTier, SewerageTier } from './billing';
+import { dbGetLatestApplicableTariff } from '@/lib/db-queries';
+import type { CustomerType, SewerageConnection, BillCalculationResult, TariffInfo, TariffTier, SewerageTier, AdditionalFee } from './billing';
 import { calculateBillFromTariff, safeParseJsonField } from './billing';
 
-const getLiveTariffFromDB = async (type: CustomerType, year: number): Promise<TariffInfo | null> => {
-  const tariff: any = await dbGetTariffByTypeAndYear(type, year);
+const getLiveTariffFromDB = async (customerType: CustomerType, date: string): Promise<TariffInfo | null> => {
+  const tariff: any = await dbGetLatestApplicableTariff(customerType, date);
   if (!tariff) return null;
 
   const tiers = safeParseJsonField<TariffTier[]>(tariff.tiers, 'tiers', 'array');
@@ -13,7 +13,7 @@ const getLiveTariffFromDB = async (type: CustomerType, year: number): Promise<Ta
 
   return {
     customer_type: tariff.customer_type as CustomerType,
-    year: tariff.year,
+    effective_date: tariff.effective_date,
     tiers,
     sewerage_tiers: safeParseJsonField<SewerageTier[]>(tariff.sewerage_tiers, 'sewerage_tiers', 'array'),
     maintenance_percentage: tariff.maintenance_percentage,
@@ -21,21 +21,32 @@ const getLiveTariffFromDB = async (type: CustomerType, year: number): Promise<Ta
     meter_rent_prices: safeParseJsonField<{ [key: string]: number }>(tariff.meter_rent_prices, 'meter_rent_prices', 'object'),
     vat_rate: tariff.vat_rate,
     domestic_vat_threshold_m3: tariff.domestic_vat_threshold_m3,
+    additional_fees: safeParseJsonField<AdditionalFee[]>(tariff.additional_fees, 'additional_fees', 'array'),
   };
 };
 
 export async function calculateBill(
-  usageM3: number,
+  CONS: number,
   customerType: CustomerType,
   sewerageConnection: SewerageConnection,
   meterSize: number,
   billingMonth: string
 ): Promise<BillCalculationResult> {
-  const year = parseInt(billingMonth.split('-')[0], 10);
-  const tariffConfig = await getLiveTariffFromDB(customerType, year);
+  // billingMonth is YYYY-MM. We can use YYYY-MM-01 as the lookup date.
+  const dateForTariff = `${billingMonth}-01`;
+  const tariffConfig = await getLiveTariffFromDB(customerType, dateForTariff);
   if (!tariffConfig) {
     // Return zeros if tariff missing
-    return { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, vatAmount: 0, meterRent: 0, sewerageCharge: 0 };
+    return {
+      totalBill: 0,
+      baseWaterCharge: 0,
+      maintenanceFee: 0,
+      sanitationFee: 0,
+      vatAmount: 0,
+      meterRent: 0,
+      sewerageCharge: 0,
+      additionalFeesCharge: 0
+    };
   }
-  return calculateBillFromTariff(tariffConfig, usageM3, meterSize, sewerageConnection);
+  return calculateBillFromTariff(tariffConfig, CONS, meterSize, sewerageConnection);
 }

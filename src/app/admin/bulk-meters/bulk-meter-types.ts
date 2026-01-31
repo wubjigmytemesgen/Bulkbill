@@ -13,6 +13,7 @@ export type BulkMeter = z.infer<typeof baseBulkMeterDataSchema> & {
   // id: string; // Removed, customerKeyNumber is the PK
   status: BulkMeterStatus;
   paymentStatus: PaymentStatus;
+  instKey?: string | null;
   outStandingbill: number;
   branchId?: string; // New field for branch association
   bulkUsage?: number;

@@ -66,10 +66,11 @@ CREATE TABLE IF NOT EXISTS `staff_members` (
 -- Bulk meters
 CREATE TABLE IF NOT EXISTS `bulk_meters` (
   `customerKeyNumber` VARCHAR(64) NOT NULL,
+  `INST_KEY` VARCHAR(100) NULL,
   `name` VARCHAR(255) NOT NULL,
   `contractNumber` VARCHAR(100) NOT NULL,
   `meterSize` DECIMAL(10,2) NOT NULL,
-  `meterNumber` VARCHAR(100) NOT NULL,
+  `METER_KEY` VARCHAR(100) NOT NULL,
   `previousReading` DECIMAL(12,3) NOT NULL,
   `currentReading` DECIMAL(12,3) NOT NULL,
   `month` VARCHAR(16) NOT NULL,
@@ -95,7 +96,7 @@ CREATE TABLE IF NOT EXISTS `bulk_meters` (
   `updatedAt` DATETIME NULL,
   PRIMARY KEY (`customerKeyNumber`),
   UNIQUE KEY `uq_bulk_contractNumber` (`contractNumber`),
-  UNIQUE KEY `uq_bulk_meterNumber` (`meterNumber`),
+  UNIQUE KEY `uq_bulk_meterNumber` (`METER_KEY`),
   INDEX `idx_bulk_branch` (`branch_id`),
   CONSTRAINT `fk_bulk_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches`(`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_bulk_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `staff_members`(`id`) ON DELETE SET NULL
@@ -104,13 +105,14 @@ CREATE TABLE IF NOT EXISTS `bulk_meters` (
 -- Individual customers
 CREATE TABLE IF NOT EXISTS `individual_customers` (
   `customerKeyNumber` VARCHAR(64) NOT NULL,
+  `INST_KEY` VARCHAR(100) NULL,
   `name` VARCHAR(255) NOT NULL,
   `contractNumber` VARCHAR(100) NOT NULL,
   `customerType` ENUM('Domestic','Non-domestic') NOT NULL,
   `bookNumber` VARCHAR(100) NOT NULL,
   `ordinal` INT NOT NULL,
   `meterSize` DECIMAL(10,2) NOT NULL,
-  `meterNumber` VARCHAR(100) NOT NULL,
+  `METER_KEY` VARCHAR(100) NOT NULL,
   `previousReading` DECIMAL(12,3) NOT NULL,
   `currentReading` DECIMAL(12,3) NOT NULL,
   `month` VARCHAR(16) NOT NULL,
@@ -129,7 +131,7 @@ CREATE TABLE IF NOT EXISTS `individual_customers` (
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`customerKeyNumber`),
   UNIQUE KEY `uq_individual_contractNumber` (`contractNumber`),
-  UNIQUE KEY `uq_individual_meterNumber` (`meterNumber`),
+  UNIQUE KEY `uq_individual_meterNumber` (`METER_KEY`),
   INDEX `idx_individual_branch` (`branch_id`),
   CONSTRAINT `fk_individual_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches`(`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_individual_assigned_bulk` FOREIGN KEY (`assignedBulkMeterId`) REFERENCES `bulk_meters`(`customerKeyNumber`) ON DELETE SET NULL
@@ -141,7 +143,7 @@ CREATE TABLE IF NOT EXISTS `bulk_meters` (
   `name` VARCHAR(255) NOT NULL,
   `contractNumber` VARCHAR(100) NOT NULL,
   `meterSize` DECIMAL(10,2) NOT NULL,
-  `meterNumber` VARCHAR(100) NOT NULL,
+  `METER_KEY` VARCHAR(100) NOT NULL,
   `previousReading` DECIMAL(12,3) NOT NULL,
   `currentReading` DECIMAL(12,3) NOT NULL,
   `month` VARCHAR(16) NOT NULL,

@@ -37,7 +37,7 @@ export default function StaffIndividualCustomersPage() {
   const { hasPermission } = usePermissions();
   const { toast } = useToast();
   const { currentUser, branchId, branchName, isStaffManagement } = useCurrentUser();
-  
+
   const [allCustomers, setAllCustomers] = React.useState<IndividualCustomer[]>([]);
   const [allBulkMeters, setAllBulkMeters] = React.useState<BulkMeter[]>([]);
   const [allBranches, setAllBranches] = React.useState<Branch[]>([]);
@@ -48,10 +48,10 @@ export default function StaffIndividualCustomersPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedCustomer, setSelectedCustomer] = React.useState<IndividualCustomer | null>(null);
   const [customerToDelete, setCustomerToDelete] = React.useState<IndividualCustomer | null>(null);
-  
+
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
-  
+
   // currentUser provided by useCurrentUser
 
   React.useEffect(() => {
@@ -59,7 +59,7 @@ export default function StaffIndividualCustomersPage() {
       setIsLoading(false);
       return;
     }
-    
+
     let isMounted = true;
     setIsLoading(true);
 
@@ -77,9 +77,9 @@ export default function StaffIndividualCustomersPage() {
         if (isMounted) setIsLoading(false);
       }
     };
-    
+
     initializeData();
-    
+
     const unSubBranches = subscribeToBranches((data) => isMounted && setAllBranches(data));
     const unSubBulkMeters = subscribeToBulkMeters((data) => isMounted && setAllBulkMeters(data));
     const unSubCustomers = subscribeToCustomers((data) => isMounted && setAllCustomers(data));
@@ -123,7 +123,7 @@ export default function StaffIndividualCustomersPage() {
 
     return { customers: [], bulkMeters: [] };
   }, [isStaffManagement, branchId, hasPermission, allCustomers, allBulkMeters]);
-  
+
   const searchedCustomers = React.useMemo(() => {
     if (!searchTerm) {
       return branchFilteredData.customers;
@@ -141,7 +141,7 @@ export default function StaffIndividualCustomersPage() {
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
-  
+
   const handleAddCustomer = () => {
     setSelectedCustomer(null);
     setIsFormOpen(true);
@@ -163,7 +163,7 @@ export default function StaffIndividualCustomersPage() {
       if (result.success) {
         toast({ title: "Customer Deleted", description: `${customerToDelete.name} has been removed.` });
       } else {
-        toast({ variant: "destructive", title: "Delete Failed", description: result.message || "Could not delete customer."});
+        toast({ variant: "destructive", title: "Delete Failed", description: result.message || "Could not delete customer." });
       }
       setCustomerToDelete(null);
     }
@@ -172,8 +172,8 @@ export default function StaffIndividualCustomersPage() {
 
   const handleSubmitCustomer = async (data: IndividualCustomerFormValues) => {
     if (!currentUser) {
-        toast({ variant: 'destructive', title: 'Error', description: 'User information not found.' });
-        return;
+      toast({ variant: 'destructive', title: 'Error', description: 'User information not found.' });
+      return;
     }
 
     if (selectedCustomer) {
@@ -181,20 +181,20 @@ export default function StaffIndividualCustomersPage() {
       if (result.success) {
         toast({ title: "Customer Updated", description: `${data.name} has been updated.` });
       } else {
-         toast({ variant: "destructive", title: "Update Failed", description: result.message || "Could not update customer."});
+        toast({ variant: "destructive", title: "Update Failed", description: result.message || "Could not update customer." });
       }
     } else {
-  const result = await addCustomerToStore(data, currentUser as StaffMember);
+      const result = await addCustomerToStore(data, currentUser as StaffMember);
       if (result.success && result.data) {
         toast({ title: "Customer Added", description: `${result.data.name} has been added.` });
       } else {
-        toast({ variant: "destructive", title: "Add Failed", description: result.message || "Could not add customer."});
+        toast({ variant: "destructive", title: "Add Failed", description: result.message || "Could not add customer." });
       }
     }
     setIsFormOpen(false);
     setSelectedCustomer(null);
   };
-  
+
   const renderContent = () => {
     if (isLoading) {
       return <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">Loading...</div>;
@@ -221,9 +221,9 @@ export default function StaffIndividualCustomersPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-4">
-  <h1 className="text-2xl md:text-3xl font-bold">Individual Customers {branchName ? `(${branchName})` : ''}</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Individual Customers {branchName ? `(${branchName})` : ''}</h1>
         <div className="flex gap-2 w-full md:w-auto">
-           <div className="relative flex-grow md:flex-grow-0">
+          <div className="relative flex-grow md:flex-grow-0">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"

@@ -39,17 +39,17 @@ export function SidebarProvider({ children, defaultOpen = true }: SidebarProvide
 
   React.useEffect(() => {
     if (isMobile) {
-      setState("collapsed") 
+      setState("collapsed")
     } else {
       setState(defaultOpen ? "expanded" : "collapsed")
     }
   }, [isMobile, defaultOpen])
-  
+
   const toggleSidebar = () => {
     if (isMobile) {
-        setState(prev => prev === "expanded" ? "collapsed" : "expanded")
+      setState(prev => prev === "expanded" ? "collapsed" : "expanded")
     } else {
-        setState(prev => prev === "expanded" ? "collapsed" : "expanded")
+      setState(prev => prev === "expanded" ? "collapsed" : "expanded")
     }
   }
 
@@ -77,9 +77,9 @@ const sidebarVariants = cva(
         sidebar: "border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
       },
       state: {
-        expanded: "w-64", 
-        collapsed: "w-16", 
-        mobile: "w-64", 
+        expanded: "w-64",
+        collapsed: "w-16",
+        mobile: "w-64",
       },
       collapsible: {
         true: "",
@@ -88,7 +88,7 @@ const sidebarVariants = cva(
       }
     },
     compoundVariants: [
-       {
+      {
         collapsible: "icon",
         state: "collapsed",
         className: "w-16",
@@ -108,29 +108,37 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement>, VariantProp
 
 const Sidebar = React.forwardRef<HTMLDivElement, SidebarProps>(
   ({ className, variant, collapsible, children, ...props }, ref) => {
-    const { state: sidebarState, isMobile } = useSidebar()
-    
+    const { state: sidebarState, isMobile, toggleSidebar } = useSidebar()
+
     let currentVisualState: "expanded" | "collapsed" | "mobile" = "expanded";
     if (isMobile) {
       currentVisualState = sidebarState === "mobile" ? "mobile" : "collapsed"; // mobile state means expanded overlay
     } else {
       currentVisualState = sidebarState as "expanded" | "collapsed";
     }
-    
+
 
     return (
-      <aside
-        ref={ref}
-        className={cn(
-            sidebarVariants({ variant, state: currentVisualState, collapsible: collapsible as boolean }), 
-            isMobile && currentVisualState === "mobile" && "shadow-xl", 
-            isMobile && currentVisualState === "collapsed" && "-translate-x-full", 
+      <>
+        {isMobile && currentVisualState === "mobile" && (
+          <div
+            className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm transition-opacity no-print"
+            onClick={toggleSidebar}
+          />
+        )}
+        <aside
+          ref={ref}
+          className={cn(
+            sidebarVariants({ variant, state: currentVisualState, collapsible: collapsible as boolean }),
+            isMobile && currentVisualState === "mobile" && "shadow-xl",
+            isMobile && currentVisualState === "collapsed" && "-translate-x-full",
             className)}
-        data-collapsible={collapsible === "icon" ? "icon" : collapsible}
-        {...props}
-      >
-        {children}
-      </aside>
+          data-collapsible={collapsible === "icon" ? "icon" : collapsible}
+          {...props}
+        >
+          {children}
+        </aside>
+      </>
     )
   }
 )
@@ -138,21 +146,21 @@ Sidebar.displayName = "Sidebar"
 
 
 const SidebarHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-    ({ className, ...props }, ref) => {
+  ({ className, ...props }, ref) => {
     const { state, isMobile } = useSidebar();
     const currentDisplayState = isMobile ? (state === "mobile" ? "expanded" : "collapsed") : state;
     return (
-        <div
+      <div
         ref={ref}
         className={cn(
-            "flex items-center justify-between p-3",
-            currentDisplayState === "collapsed" && !isMobile && "justify-center",
-            className
+          "flex items-center justify-between p-3",
+          currentDisplayState === "collapsed" && !isMobile && "justify-center",
+          className
         )}
         {...props}
-        />
+      />
     );
-    }
+  }
 );
 SidebarHeader.displayName = "SidebarHeader";
 
@@ -170,11 +178,11 @@ const SidebarFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTML
     const { state, isMobile } = useSidebar();
     const currentDisplayState = isMobile ? (state === "mobile" ? "expanded" : "collapsed") : state;
     return (
-        <div
+      <div
         ref={ref}
         className={cn("p-3 mt-auto", currentDisplayState === "collapsed" && !isMobile && "p-2", className)}
         {...props}
-        />
+      />
     )
   }
 )
@@ -184,24 +192,24 @@ SidebarFooter.displayName = "SidebarFooter"
 const SidebarTrigger = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, children, ...props }, ref) => {
     const { toggleSidebar, state, isMobile } = useSidebar()
-    if (isMobile && state !== "mobile") return null; 
 
-    const effectiveState = isMobile ? state === "mobile" ? "expanded" : "collapsed" : state;
+    // Ensure trigger is always available on mobile to open/close sidebar
+    const effectiveState = isMobile ? (state === "mobile" ? "expanded" : "collapsed") : state;
 
     return (
       <TooltipProvider delayDuration={0}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-                ref={ref}
-                variant="ghost"
-                size="icon"
-                className={cn("h-8 w-8", className)}
-                onClick={toggleSidebar}
-                aria-label={effectiveState === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
-                {...props}
+              ref={ref}
+              variant="ghost"
+              size="icon"
+              className={cn("h-8 w-8", className)}
+              onClick={toggleSidebar}
+              aria-label={effectiveState === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
+              {...props}
             >
-                {children || (effectiveState === "expanded" ? <ChevronLeft /> : <ChevronRight />) }
+              {children || (effectiveState === "expanded" ? <ChevronLeft /> : <ChevronRight />)}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={5}>
@@ -218,12 +226,12 @@ SidebarTrigger.displayName = "SidebarTrigger"
 const SidebarInset = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, children, ...props }, ref) => {
     const { state, isMobile } = useSidebar();
-    
-    const marginLeftClass = isMobile 
-      ? "" 
-      : state === "collapsed" 
-        ? "sm:ml-16" 
-        : "sm:ml-64"; 
+
+    const marginLeftClass = isMobile
+      ? ""
+      : state === "collapsed"
+        ? "sm:ml-16"
+        : "sm:ml-64";
 
     return (
       <div
@@ -302,8 +310,17 @@ interface SidebarMenuButtonProps extends ButtonProps { // ButtonProps includes a
 
 const SidebarMenuButton = React.forwardRef<HTMLButtonElement, SidebarMenuButtonProps>(
   ({ className, variant = "ghost", size = "default", isActive, tooltip, children, asChild, ...props }, ref) => {
-    const { state, isMobile } = useSidebar();
+    const { state, isMobile, toggleSidebar } = useSidebar();
     const currentDisplayState = isMobile ? (state === "mobile" ? "expanded" : "collapsed") : state;
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (isMobile && state === "mobile") {
+        toggleSidebar();
+      }
+      if (props.onClick) {
+        props.onClick(e);
+      }
+    };
 
     const buttonElement = (
       <Button
@@ -319,6 +336,7 @@ const SidebarMenuButton = React.forwardRef<HTMLButtonElement, SidebarMenuButtonP
         )}
         {...props} // Pass down other props
         asChild={asChild} // Pass down the asChild prop
+        onClick={handleClick}
       >
         {children}
       </Button>
@@ -367,8 +385,19 @@ const SidebarMenuSubItem = React.forwardRef<HTMLLIElement, React.HTMLAttributes<
 )
 SidebarMenuSubItem.displayName = "SidebarMenuSubItem"
 
-const SidebarMenuSubButton = React.forwardRef<HTMLButtonElement, ButtonProps & {isActive?: boolean}>(
+const SidebarMenuSubButton = React.forwardRef<HTMLButtonElement, ButtonProps & { isActive?: boolean }>(
   ({ className, variant = "ghost", size = "sm", isActive, children, asChild, ...props }, ref) => {
+    const { state, isMobile, toggleSidebar } = useSidebar();
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (isMobile && state === "mobile") {
+        toggleSidebar();
+      }
+      if (props.onClick) {
+        props.onClick(e);
+      }
+    };
+
     return (
       <Button
         ref={ref}
@@ -381,6 +410,7 @@ const SidebarMenuSubButton = React.forwardRef<HTMLButtonElement, ButtonProps & {
           className)}
         {...props} // Pass down other props
         asChild={asChild} // Pass down the asChild prop
+        onClick={handleClick}
       >
         {children}
       </Button>

@@ -7,7 +7,7 @@ import { SidebarNav, type NavItemGroup, type NavItem } from "@/components/layout
 import { Skeleton } from "@/components/ui/skeleton";
 import { PermissionsContext, type PermissionsContextType } from '@/hooks/use-permissions';
 import { useRouter } from 'next/navigation';
-import { refetchUserPermissions } from "@/lib/data-store";
+
 
 interface UserProfile {
     id: string;
@@ -41,6 +41,9 @@ const buildStaffSidebarNavItems = (user: UserProfile | null): NavItemGroup[] => 
     if (hasPermission('notifications_view')) managementItems.push({ title: "Notifications", href: "/staff/notifications", iconName: "Bell" });
     if (hasPermission('tariffs_view')) managementItems.push({ title: "Tariff Management", href: "/staff/tariffs", iconName: "LibraryBig" });
     if (hasPermission('knowledge_base_manage')) managementItems.push({ title: "Knowledge Base", href: "/staff/knowledge-base", iconName: "BookText" });
+    if (hasPermission('bill:view_drafts') || hasPermission('bill:approve') || hasPermission('bill:create')) {
+        managementItems.push({ title: "Bill Management", href: "/staff/bill-management", iconName: "FileText" });
+    }
 
     if (managementItems.length > 0) {
         navItems.push({ title: "Management", items: managementItems });
@@ -84,7 +87,8 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
 
     React.useEffect(() => {
         const fetchUser = async () => {
-            await refetchUserPermissions();
+            // Permissions will refresh on next navigation or reload
+
             const storedUser = localStorage.getItem("user");
             if (storedUser) {
                 try {

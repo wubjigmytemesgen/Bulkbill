@@ -12,7 +12,7 @@ export const arrayToXlsxBlob = (data: any[], headers: string[]): Blob => {
   for (let C = range.s.c; C <= range.e.c; ++C) {
     const address = XLSX.utils.encode_cell({ r: 0, c: C });
     if (!ws[address]) {
-        XLSX.utils.sheet_add_aoa(ws, [[headers[C] || '']], { origin: address });
+      XLSX.utils.sheet_add_aoa(ws, [[headers[C] || '']], { origin: address });
     }
     ws[address].s = { font: { bold: true } } as any;
   }
@@ -34,6 +34,24 @@ export const arrayToXlsxBlob = (data: any[], headers: string[]): Blob => {
 
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+};
+
+export const arrayToCsvBlob = (data: any[], headers: string[]): Blob => {
+  const headerRow = headers.join(',');
+  const rows = data.map(row => {
+    return headers.map(header => {
+      const cellValue = row[header] === null || row[header] === undefined ? '' : row[header];
+      const stringValue = String(cellValue);
+      // Escape quotes and wrap in quotes if contains comma, quote or newline
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    }).join(',');
+  });
+
+  const csvContent = [headerRow, ...rows].join('\n');
+  return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
 };
 
 

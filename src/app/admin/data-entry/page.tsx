@@ -47,13 +47,13 @@ export default function AdminDataEntryPage() {
   };
 
   const handleIndividualCustomerCsvUpload = async (data: IndividualCustomerDataEntryFormValues) => {
-     if (!currentUser) return { success: false, message: "User not authenticated" };
-     // Admins can upload directly as 'Active', others are 'Pending Approval'
-     const status: IndividualCustomerStatus = 'Active';
-     const customerDataForStore = {
-        ...data,
-        status,
-        paymentStatus: 'Unpaid', // Default payment status
+    if (!currentUser) return { success: false, message: "User not authenticated" };
+    // Admins can upload directly as 'Active', others are 'Pending Approval'
+    const status: IndividualCustomerStatus = 'Active';
+    const customerDataForStore = {
+      ...data,
+      status,
+      paymentStatus: 'Unpaid', // Default payment status
     } as Omit<IndividualCustomer, 'created_at' | 'updated_at' | 'calculatedBill' | 'approved_by' | 'approved_at'>;
     return await addCustomer(customerDataForStore, currentUser);
   };
@@ -73,7 +73,7 @@ export default function AdminDataEntryPage() {
       URL.revokeObjectURL(url);
     }
   };
-  
+
   if (!hasPermission('data_entry_access')) {
     return (
       <div className="space-y-6">
@@ -95,102 +95,102 @@ export default function AdminDataEntryPage() {
 
       <Tabs defaultValue="manual-individual" className="w-full">
         <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto sm:h-10">
-            <TabsTrigger value="manual-individual" className="py-2 sm:py-1.5">
-              <FileText className="mr-2 h-4 w-4" /> Individual (Manual)
-            </TabsTrigger>
-            <TabsTrigger value="manual-bulk" className="py-2 sm:py-1.5">
-              <FileText className="mr-2 h-4 w-4" /> Bulk Meter (Manual)
-            </TabsTrigger>
-            <TabsTrigger value="csv-upload" className="py-2 sm:py-1.5">
-              <UploadCloud className="mr-2 h-4 w-4" /> CSV Upload
-            </TabsTrigger>
+          <TabsTrigger value="manual-individual" className="py-2 sm:py-1.5">
+            <FileText className="mr-2 h-4 w-4" /> Individual (Manual)
+          </TabsTrigger>
+          <TabsTrigger value="manual-bulk" className="py-2 sm:py-1.5">
+            <FileText className="mr-2 h-4 w-4" /> Bulk Meter (Manual)
+          </TabsTrigger>
+          <TabsTrigger value="csv-upload" className="py-2 sm:py-1.5">
+            <UploadCloud className="mr-2 h-4 w-4" /> CSV Upload
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="manual-individual">
-            <Card className="shadow-lg mt-4">
+          <Card className="shadow-lg mt-4">
             <CardHeader>
-                <CardTitle>Individual Customer Data Entry</CardTitle>
-                <CardDescription>
-                    Manually enter data for a single individual customer.
-                    This form is designed for quick, one-off entries for admins.
-                </CardDescription>
+              <CardTitle>Individual Customer Data Entry</CardTitle>
+              <CardDescription>
+                Manually enter data for a single individual customer.
+                This form is designed for quick, one-off entries for admins.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-                <IndividualCustomerDataEntryForm />
+              <IndividualCustomerDataEntryForm />
             </CardContent>
-            </Card>
+          </Card>
         </TabsContent>
 
         <TabsContent value="manual-bulk">
-            <Card className="shadow-lg mt-4">
+          <Card className="shadow-lg mt-4">
             <CardHeader>
-                <CardTitle>Bulk Meter Data Entry</CardTitle>
-                 <CardDescription>
-                    Manually enter data for a single bulk meter.
-                </CardDescription>
+              <CardTitle>Bulk Meter Data Entry</CardTitle>
+              <CardDescription>
+                Manually enter data for a single bulk meter.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-                <BulkMeterDataEntryForm />
+              <BulkMeterDataEntryForm />
             </CardContent>
-            </Card>
+          </Card>
         </TabsContent>
 
         <TabsContent value="csv-upload">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
             <Card className="shadow-lg">
-                <CardHeader>
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <CardTitle>Bulk Meter CSV Upload</CardTitle>
-                        <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => downloadCsvTemplate(bulkMeterCsvHeaders, 'bulk_meter_template.csv')}
-                        >
-                            <FileSpreadsheet className="mr-2 h-4 w-4" />
-                            Download Template
-                        </Button>
-                    </div>
-                    <CardDescription className="pt-2">
-                       Upload multiple bulk meters at once. Ensure the CSV file structure, headers, and column order match the template exactly.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <CardTitle>Bulk Meter CSV Upload</CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => downloadCsvTemplate(bulkMeterCsvHeaders, 'bulk_meter_template.csv')}
+                  >
+                    <FileSpreadsheet className="mr-2 h-4 w-4" />
+                    Download Template
+                  </Button>
+                </div>
+                <CardDescription className="pt-2">
+                  Upload multiple bulk meters at once. Ensure the CSV file structure, headers, and column order match the template exactly.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <CsvUploadSection
-                    entryType="bulk"
-                    schema={bulkMeterDataEntrySchema}
-                    addRecordFunction={handleBulkMeterCsvUpload}
-                    expectedHeaders={bulkMeterCsvHeaders}
+                  entryType="bulk"
+                  schema={bulkMeterDataEntrySchema}
+                  addRecordFunction={handleBulkMeterCsvUpload}
+                  expectedHeaders={bulkMeterCsvHeaders}
                 />
-                </CardContent>
+              </CardContent>
             </Card>
 
             <Card className="shadow-lg">
-                <CardHeader>
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <CardTitle>Individual Customer CSV Upload</CardTitle>
-                         <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => downloadCsvTemplate(individualCustomerCsvHeaders, 'individual_customer_template.csv')}
-                        >
-                            <FileSpreadsheet className="mr-2 h-4 w-4" />
-                            Download Template
-                        </Button>
-                    </div>
-                    <CardDescription className="pt-2">
-                       Upload multiple individual customers. Ensure the `customerKeyNumber` is unique and `assignedBulkMeterId` (if used) exists.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <CardTitle>Individual Customer CSV Upload</CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => downloadCsvTemplate(individualCustomerCsvHeaders, 'individual_customer_template.csv')}
+                  >
+                    <FileSpreadsheet className="mr-2 h-4 w-4" />
+                    Download Template
+                  </Button>
+                </div>
+                <CardDescription className="pt-2">
+                  Upload multiple individual customers. Ensure the `customerKeyNumber` is unique and `assignedBulkMeterId` (if used) exists.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <CsvUploadSection
-                    entryType="individual"
-                    schema={individualCustomerDataEntrySchema}
-                    addRecordFunction={handleIndividualCustomerCsvUpload}
-                    expectedHeaders={individualCustomerCsvHeaders}
+                  entryType="individual"
+                  schema={individualCustomerDataEntrySchema}
+                  addRecordFunction={handleIndividualCustomerCsvUpload}
+                  expectedHeaders={individualCustomerCsvHeaders}
                 />
-                </CardContent>
+              </CardContent>
             </Card>
-            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

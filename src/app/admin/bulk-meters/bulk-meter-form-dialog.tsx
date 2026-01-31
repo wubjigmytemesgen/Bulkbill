@@ -82,6 +82,7 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
     defaultValues: {
       name: "",
       customerKeyNumber: "",
+      instKey: "",
       contractNumber: "",
       meterSize: undefined,
       meterNumber: "",
@@ -108,6 +109,7 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
         ...defaultValues,
         phoneNumber: (defaultValues as any).phoneNumber || "",
         meterSize: defaultValues.meterSize ?? undefined,
+        NUMBER_OF_DIALS: defaultValues.NUMBER_OF_DIALS ?? undefined,
         previousReading: defaultValues.previousReading ?? undefined,
         currentReading: defaultValues.currentReading ?? undefined,
         branchId: defaultValues.branchId || undefined,
@@ -122,8 +124,10 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
       form.reset({
         name: "",
         customerKeyNumber: "",
+        instKey: "",
         contractNumber: "",
         meterSize: undefined,
+        NUMBER_OF_DIALS: undefined,
         meterNumber: "",
         previousReading: undefined,
         currentReading: undefined,
@@ -241,6 +245,19 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
               />
               <FormField
                 control={form.control}
+                name="instKey"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>INST_KEY <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="e.g., INST-123456" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
                 name="contractNumber"
                 render={({ field }) => (
                   <FormItem>
@@ -278,6 +295,27 @@ export function BulkMeterFormDialog({ open, onOpenChange, onSubmit, defaultValue
                         ))}
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="NUMBER_OF_DIALS"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Number of Dials</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={e => {
+                          const val = e.target.value;
+                          field.onChange(val === "" ? undefined : parseInt(val, 10));
+                        }}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

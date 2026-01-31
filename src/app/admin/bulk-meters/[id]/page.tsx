@@ -30,6 +30,7 @@ import { IndividualCustomerFormDialog, type IndividualCustomerFormValues } from 
 import { AddReadingDialog } from "@/components/add-reading-dialog";
 import { cn } from "@/lib/utils";
 import { format, parseISO, lastDayOfMonth } from "date-fns";
+import { getBillingPeriodStartDate, getBillingPeriodEndDate, calculateDueDate } from "@/lib/billing-config";
 
 // Safely format a date value that may be a string (ISO), a Date object, a timestamp, or null/undefined.
 function formatDateForDisplay(value?: string | Date | number | null) {
@@ -56,6 +57,15 @@ function formatDateForDisplay(value?: string | Date | number | null) {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { Separator } from "@/components/ui/separator";
 
+function calculateAdjustedDifferenceUsage(bulkUsage: number, individualUsage: number): number {
+  const diff = bulkUsage - individualUsage;
+  if (diff < 0) return 3;
+  if (diff === 0) return 3;
+  if (diff === 1) return 3;
+  if (diff === 2) return 3;
+  return diff;
+}
+
 const initialMemoizedDetails = {
   bmPreviousReading: 0, bmCurrentReading: 0, bulkUsage: 0,
   totalBulkBillForPeriod: 0, totalPayable: 0, differenceUsage: 0,
@@ -75,7 +85,7 @@ export default function BulkMeterDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
-  const bulkMeterKey = params.id as string;
+  const bulkMeterKey = params?.id ? String(params.id) : "";
 
   const [bulkMeter, setBulkMeter] = useState<BulkMeter | null>(null);
   const [associatedCustomers, setAssociatedCustomers] = useState<IndividualCustomer[]>([]);
@@ -157,18 +167,7 @@ export default function BulkMeterDetailsPage() {
 
     const totalIndividualUsage = currentAssociatedCustomers.reduce((sum, cust) => sum + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0);
 
-    let differenceUsage = bulkUsage - totalIndividualUsage;
-
-    // Apply specific adjustment rules
-    if (differenceUsage < 0) { // If Bulk Usage < Total Individual Usage
-      differenceUsage = 3;
-    } else if (differenceUsage === 0) {
-      differenceUsage += 3;
-    } else if (differenceUsage === 1) {
-      differenceUsage += 2;
-    } else if (differenceUsage === 2) {
-      differenceUsage += 1;
-    }
+    let differenceUsage = calculateAdjustedDifferenceUsage(bulkUsage, totalIndividualUsage);
 
     let sewerageUsage: number | undefined = undefined;
     if (
@@ -187,7 +186,7 @@ export default function BulkMeterDetailsPage() {
       billingMonth,
       sewerageUsage
     );
-    const differenceFull = differenceFullOrNull || { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, sewerageCharge: 0, meterRent: 0, vatAmount: 0 } as BillCalculationResult;
+    const differenceFull = differenceFullOrNull || { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, sewerageCharge: 0, meterRent: 0, vatAmount: 0, additionalFeesCharge: 0 } as BillCalculationResult;
     const differenceBill = differenceFull.totalBill;
     const differenceBillBreakdown = differenceFull;
 
@@ -202,21 +201,21 @@ export default function BulkMeterDetailsPage() {
 
     if (billToRender) {
       const { data: historicalBillDetailsOrNull } = await calculateBillAction(billToRender.differenceUsage ?? 0, currentBulkMeter.chargeGroup as CustomerType || "Non-domestic", currentBulkMeter.sewerageConnection || "No", currentBulkMeter.meterSize, billToRender.monthYear);
-      const historicalBillDetails = historicalBillDetailsOrNull || { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, sewerageCharge: 0, meterRent: 0, vatAmount: 0, sewerageUsageM3: 0, baseWaterChargeUsageM3: 0 } as BillCalculationResult;
+      const historicalBillDetails = historicalBillDetailsOrNull || { totalBill: 0, baseWaterCharge: 0, maintenanceFee: 0, sanitationFee: 0, sewerageCharge: 0, meterRent: 0, vatAmount: 0, sewerageUsageM3: 0, baseWaterChargeUsageM3: 0, additionalFeesCharge: 0 } as BillCalculationResult;
       finalBillCardDetails = {
-        prevReading: billToRender.previousReadingValue,
-        currReading: billToRender.currentReadingValue,
-        usage: billToRender.usageM3 ?? 0,
+        prevReading: billToRender.PREVREAD,
+        currReading: billToRender.CURRREAD,
+        usage: billToRender.CONS ?? 0,
         baseWaterCharge: historicalBillDetails.baseWaterCharge,
         maintenanceFee: historicalBillDetails.maintenanceFee,
         sanitationFee: historicalBillDetails.sanitationFee,
         sewerageCharge: historicalBillDetails.sewerageCharge,
         meterRent: historicalBillDetails.meterRent,
         vatAmount: historicalBillDetails.vatAmount,
-        totalDifferenceBill: billToRender.totalAmountDue,
+        totalDifferenceBill: billToRender.TOTALBILLAMOUNT,
         differenceUsage: billToRender.differenceUsage ?? 0,
         outstandingBill: billToRender.balanceCarriedForward ?? 0,
-        totalPayable: (billToRender.balanceCarriedForward ?? 0) + billToRender.totalAmountDue,
+        totalPayable: (billToRender.balanceCarriedForward ?? 0) + billToRender.TOTALBILLAMOUNT,
         paymentStatus: (billToRender.paymentStatus as PaymentStatus) || 'Unpaid',
         month: billToRender.monthYear,
       };
@@ -270,7 +269,7 @@ export default function BulkMeterDetailsPage() {
       if (foundBM) {
         setBulkMeter(foundBM);
         setAssociatedCustomers(currentGlobalCustomers.filter(c => c.assignedBulkMeterId === bulkMeterKey));
-        setMeterReadingHistory(getBulkMeterReadings().filter(r => r.bulkMeterId === foundBM.customerKeyNumber).sort((a, b) => {
+        setMeterReadingHistory(getBulkMeterReadings().filter(r => r.CUSTOMERKEY === foundBM.customerKeyNumber).sort((a, b) => {
           const dateA = new Date(a.readingDate).getTime();
           const dateB = new Date(b.readingDate).getTime();
           if (dateB !== dateA) {
@@ -280,7 +279,7 @@ export default function BulkMeterDetailsPage() {
           const creationB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
           return creationB - creationA;
         }));
-        setBillingHistory(getBills().filter(b => b.bulkMeterId === foundBM.customerKeyNumber).sort((a, b) => {
+        setBillingHistory(getBills().filter(b => b.CUSTOMERKEY === foundBM.customerKeyNumber).sort((a, b) => {
           const dateA = new Date(b.billPeriodEndDate);
           const dateB = new Date(a.billPeriodEndDate);
           if (dateB.getTime() !== dateA.getTime()) {
@@ -316,7 +315,7 @@ export default function BulkMeterDetailsPage() {
       if (foundBM) {
         setBulkMeter(foundBM);
         setAssociatedCustomers(currentGlobalCustomers.filter(c => c.assignedBulkMeterId === bulkMeterKey));
-        setMeterReadingHistory(getBulkMeterReadings().filter(r => r.bulkMeterId === foundBM.customerKeyNumber).sort((a, b) => {
+        setMeterReadingHistory(getBulkMeterReadings().filter(r => r.CUSTOMERKEY === foundBM.customerKeyNumber).sort((a, b) => {
           const dateA = new Date(a.readingDate).getTime();
           const dateB = new Date(b.readingDate).getTime();
           if (dateB !== dateA) {
@@ -326,7 +325,7 @@ export default function BulkMeterDetailsPage() {
           const creationB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
           return creationB - creationA;
         }));
-        setBillingHistory(getBills().filter(b => b.bulkMeterId === foundBM.customerKeyNumber).sort((a, b) => {
+        setBillingHistory(getBills().filter(b => b.CUSTOMERKEY === foundBM.customerKeyNumber).sort((a, b) => {
           const dateA = new Date(a.billPeriodEndDate);
           const dateB = new Date(b.billPeriodEndDate);
           if (dateB.getTime() !== dateA.getTime()) {
@@ -402,7 +401,7 @@ export default function BulkMeterDetailsPage() {
     const readingDate = new Date();
 
     const result = await addBulkMeterReading({
-      bulkMeterId: bulkMeter.customerKeyNumber,
+      CUSTOMERKEY: bulkMeter.customerKeyNumber,
       readingValue: readingValue,
       readingDate: format(readingDate, "yyyy-MM-dd"),
       monthYear: format(readingDate, "yyyy-MM"),
@@ -464,13 +463,13 @@ export default function BulkMeterDetailsPage() {
         });
         const temporaryBillForPrint: DomainBill = {
           id: `payslip-${bulkMeter.customerKeyNumber}-${Date.now()}`,
-          bulkMeterId: bulkMeter.customerKeyNumber,
+          CUSTOMERKEY: bulkMeter.customerKeyNumber,
           monthYear: bulkMeter.month || 'N/A',
-          billPeriodStartDate: bulkMeter.month ? `${bulkMeter.month}-01` : 'N/A',
-          billPeriodEndDate: bulkMeter.month ? format(lastDayOfMonth(parseISO(`${bulkMeter.month}-01`)), 'yyyy-MM-dd') : 'N/A',
-          previousReadingValue: bmPreviousReading,
-          currentReadingValue: bmCurrentReading,
-          usageM3: bulkUsage,
+          billPeriodStartDate: bulkMeter.month ? getBillingPeriodStartDate(bulkMeter.month) : 'N/A',
+          billPeriodEndDate: bulkMeter.month ? getBillingPeriodEndDate(bulkMeter.month) : 'N/A',
+          PREVREAD: bmPreviousReading,
+          CURRREAD: bmCurrentReading,
+          CONS: bulkUsage,
           differenceUsage: differenceUsage,
           baseWaterCharge: differenceBillBreakdown.baseWaterCharge,
           maintenanceFee: differenceBillBreakdown.maintenanceFee,
@@ -478,7 +477,7 @@ export default function BulkMeterDetailsPage() {
           sewerageCharge: differenceBillBreakdown.sewerageCharge,
           meterRent: differenceBillBreakdown.meterRent,
           balanceCarriedForward: bulkMeter.outStandingbill,
-          totalAmountDue: differenceBill,
+          TOTALBILLAMOUNT: differenceBill,
           dueDate: 'N/A',
           paymentStatus: billCardDetails.paymentStatus,
           notes: "Current Live Pay Slip Generation (No History Available)",
@@ -546,16 +545,7 @@ export default function BulkMeterDetailsPage() {
 
       const bmUsage = (latestMeterData.currentReading ?? 0) - (latestMeterData.previousReading ?? 0);
       const totalIndivUsage = associatedCustomers.reduce((sum, cust) => sum + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0);
-      let differenceUsageForCycle = bmUsage - totalIndivUsage;
-
-      // Apply specific adjustment rules
-      if (differenceUsageForCycle === 0) {
-        differenceUsageForCycle += 3;
-      } else if (differenceUsageForCycle === 1) {
-        differenceUsageForCycle += 2;
-      } else if (differenceUsageForCycle === 2) {
-        differenceUsageForCycle += 1;
-      }
+      let differenceUsageForCycle = calculateAdjustedDifferenceUsage(bmUsage, totalIndivUsage);
 
       const chargeGroup = latestMeterData.chargeGroup as CustomerType || 'Non-domestic';
       const sewerageConn = latestMeterData.sewerageConnection || 'No';
@@ -581,25 +571,76 @@ export default function BulkMeterDetailsPage() {
       const totalPayableForCycle = billForDifferenceUsage + balanceFromPreviousPeriods;
 
       const billDate = new Date();
-      const periodEndDate = lastDayOfMonth(parsedDate);
-      const dueDateObject = new Date(periodEndDate);
-      dueDateObject.setDate(dueDateObject.getDate() + 15);
+      // Use centralized billing config for period dates
+      const periodStartDate = getBillingPeriodStartDate(parsedMonth);
+      const periodEndDate = getBillingPeriodEndDate(parsedMonth);
+
+      const dueDateObject = calculateDueDate(periodEndDate);
+
+      // --- Aging Calculation for Database Storage ---
+      let debit30_val = 0;
+      let debit30_60_val = 0;
+      let debit60_val = 0;
+
+      if (balanceFromPreviousPeriods > 0.01) {
+        let remainingForAging = balanceFromPreviousPeriods;
+
+        // Sort history explicitly just in case, newest first
+        const sortedHistory = [...billingHistory].sort((a, b) => new Date(b.billPeriodEndDate).getTime() - new Date(a.billPeriodEndDate).getTime());
+
+        // 1. DEBIT_30: From the most recent existing bill (sortedHistory[0])
+        // Because this is a NEW bill, the "previous" bill is the first one in the history list.
+        const prev1 = sortedHistory[0];
+        if (prev1) {
+          const attributable = prev1.TOTALBILLAMOUNT;
+          const amount = Math.min(remainingForAging, attributable);
+          debit30_val = amount;
+          remainingForAging -= amount;
+        } else {
+          // No history means all is old debt? Or just bucket it to >60?
+          // If we have balance but no bills, usually it's imported balance/old debt -> >60
+          debit60_val += remainingForAging;
+          remainingForAging = 0;
+        }
+
+        // 2. DEBIT_30_60: From the 2nd most recent bill (sortedHistory[1])
+        if (remainingForAging > 0.01) {
+          const prev2 = sortedHistory[1];
+          if (prev2) {
+            const attributable = prev2.TOTALBILLAMOUNT;
+            const amount = Math.min(remainingForAging, attributable);
+            debit30_60_val = amount;
+            remainingForAging -= amount;
+          } else {
+            debit60_val += remainingForAging;
+            remainingForAging = 0;
+          }
+        }
+
+        // 3. DEBIT_60: Remainder
+        if (remainingForAging > 0.01) {
+          debit60_val += remainingForAging;
+        }
+      }
 
       const billToSave: Omit<DomainBill, 'id' | 'createdAt' | 'updatedAt'> = {
-        bulkMeterId: latestMeterData.customerKeyNumber,
-        billPeriodStartDate: `${parsedMonth}-01`,
-        billPeriodEndDate: format(periodEndDate, 'yyyy-MM-dd'),
+        CUSTOMERKEY: latestMeterData.customerKeyNumber,
+        billPeriodStartDate: periodStartDate,
+        billPeriodEndDate: periodEndDate,
         monthYear: parsedMonth,
-        previousReadingValue: latestMeterData.previousReading,
-        currentReadingValue: latestMeterData.currentReading,
-        usageM3: (latestMeterData.currentReading ?? 0) - (latestMeterData.previousReading ?? 0),
+        PREVREAD: latestMeterData.previousReading,
+        CURRREAD: latestMeterData.currentReading,
+        CONS: (latestMeterData.currentReading ?? 0) - (latestMeterData.previousReading ?? 0),
         differenceUsage: differenceUsageForCycle,
         ...differenceBillBreakdownForCycle,
         balanceCarriedForward: balanceFromPreviousPeriods,
-        totalAmountDue: billForDifferenceUsage,
+        TOTALBILLAMOUNT: billForDifferenceUsage,
         dueDate: format(dueDateObject, 'yyyy-MM-dd'),
         paymentStatus: carryBalance ? 'Unpaid' : 'Paid',
         notes: `Bill generated on ${format(billDate, 'PP')}. Total payable was ${totalPayableForCycle.toFixed(2)}.`,
+        debit30: debit30_val,
+        debit30_60: debit30_60_val,
+        debit60: debit60_val,
       };
 
       const addBillResult = await addBill(billToSave);
@@ -608,7 +649,6 @@ export default function BulkMeterDetailsPage() {
         setIsProcessingCycle(false);
         return;
       }
-
       const newOutstandingBalance = carryBalance ? totalPayableForCycle : 0;
 
       const updatePayload: Partial<Omit<BulkMeter, 'customerKeyNumber'>> = {
@@ -738,6 +778,21 @@ export default function BulkMeterDetailsPage() {
                   <div className="print-row"><span>Sewerage Fee:</span> <span>ETB {billCardDetails.sewerageCharge.toFixed(2)}</span></div>
                   <div className="print-row"><span>Meter Rent:</span> <span>ETB {billCardDetails.meterRent.toFixed(2)}</span></div>
                   <div className="print-row"><span>VAT (15%):</span> <span>ETB {billCardDetails.vatAmount.toFixed(2)}</span></div>
+                  {differenceBillBreakdown?.additionalFeesCharge && differenceBillBreakdown.additionalFeesCharge > 0 && (
+                    <>
+                      <hr className="print-hr-dashed" />
+                      <div className="print-row font-semibold"><span>Additional Fees:</span></div>
+                      {differenceBillBreakdown?.additionalFeesBreakdown?.map((fee, idx) => (
+                        <div key={idx} className="print-row pl-4">
+                          <span>{fee.name}:</span> <span>ETB {fee.charge.toFixed(2)}</span>
+                        </div>
+                      ))}
+                      <div className="print-row font-semibold pl-4">
+                        <span>Total Additional Fees:</span> <span>ETB {differenceBillBreakdown.additionalFeesCharge.toFixed(2)}</span>
+                      </div>
+                      <hr className="print-hr-dashed" />
+                    </>
+                  )}
                   <div className="print-row"><span>Difference usage:</span> <span>{billCardDetails.differenceUsage.toFixed(2)} m³</span></div>
                 </div>
 
@@ -854,6 +909,19 @@ export default function BulkMeterDetailsPage() {
                 <p><strong className="font-semibold">Sewerage Fee:</strong> ETB {differenceBillBreakdown?.sewerageCharge?.toFixed(2) ?? '0.00'}</p>
                 <p><strong className="font-semibold">Meter Rent:</strong> ETB {differenceBillBreakdown?.meterRent?.toFixed(2) ?? '0.00'}</p>
                 <p><strong className="font-semibold">VAT (15%):</strong> ETB {differenceBillBreakdown?.vatAmount?.toFixed(2) ?? '0.00'}</p>
+                {differenceBillBreakdown?.additionalFeesCharge && differenceBillBreakdown.additionalFeesCharge > 0 && (
+                  <div className="mt-2 pt-2 border-t">
+                    <p className="font-semibold text-sm text-muted-foreground mb-1">Additional Fees:</p>
+                    {differenceBillBreakdown?.additionalFeesBreakdown?.map((fee, idx) => (
+                      <p key={idx} className="text-sm pl-2">
+                        <strong className="font-medium">{fee.name}:</strong> ETB {fee.charge.toFixed(2)}
+                      </p>
+                    ))}
+                    <p className="text-sm pl-2 font-semibold mt-1">
+                      <strong>Total Additional Fees:</strong> ETB {differenceBillBreakdown.additionalFeesCharge.toFixed(2)}
+                    </p>
+                  </div>
+                )}
                 <p className="text-base pt-1 border-t mt-1 font-semibold">Total Difference Bill: ETB {differenceBill.toFixed(2)}</p>
                 <p className={cn("text-base font-semibold", currentBulkMeter.outStandingbill > 0 ? "text-destructive" : "text-muted-foreground")}>Outstanding Bill: ETB {currentBulkMeter.outStandingbill.toFixed(2)}</p>
                 <p className="text-xl font-bold text-primary pt-1 border-t mt-1">Total Amount Payable: ETB {totalPayable.toFixed(2)}</p>
@@ -900,30 +968,46 @@ export default function BulkMeterDetailsPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                {meterReadingHistory.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Reading Value</TableHead>
-                        <TableHead>Notes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {paginatedReadingHistory.map(reading => (
-                        <TableRow key={reading.id}>
-                          <TableCell>{formatDateForDisplay(reading.readingDate)}</TableCell>
-                          <TableCell className="text-right">{reading.readingValue.toFixed(2)}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{reading.notes}</TableCell>
+              {meterReadingHistory.length === 0 ? (
+                <p className="text-muted-foreground text-sm text-center py-6 italic">No historical readings found for this meter.</p>
+              ) : (
+                <>
+                  {/* Reading History Table - Desktop */}
+                  <div className="overflow-x-auto hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead className="text-right">Reading Value</TableHead>
+                          <TableHead>Notes</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <p className="text-muted-foreground text-sm text-center py-4">No historical readings found.</p>
-                )}
-              </div>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedReadingHistory.map(reading => (
+                          <TableRow key={reading.id}>
+                            <TableCell>{formatDateForDisplay(reading.readingDate)}</TableCell>
+                            <TableCell className="text-right">{reading.readingValue.toFixed(2)}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{reading.notes}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Reading History Cards - Mobile */}
+                  <div className="grid grid-cols-1 gap-2 p-4 md:hidden">
+                    {paginatedReadingHistory.map(reading => (
+                      <div key={reading.id} className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-muted-foreground uppercase">{formatDateForDisplay(reading.readingDate)}</p>
+                          <p className="text-sm font-medium">{reading.readingValue.toFixed(2)} m³</p>
+                        </div>
+                        {reading.notes && <p className="text-[10px] text-muted-foreground italic truncate max-w-[150px]">{reading.notes}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </CardContent>
             {meterReadingHistory.length > 0 && (
               <TablePagination
@@ -943,28 +1027,151 @@ export default function BulkMeterDetailsPage() {
           <Card className="shadow-lg non-printable">
             <CardHeader><CardTitle className="flex items-center gap-2"><ListCollapse className="h-5 w-5 text-primary" />Billing History</CardTitle><CardDescription>Historical bills generated for this meter.</CardDescription></CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">{billingHistory.length > 0 ? (<Table><TableHeader><TableRow><TableHead>Month</TableHead><TableHead>Date Billed</TableHead><TableHead className="text-right">Prev. Reading</TableHead><TableHead className="text-right">Curr. Reading</TableHead><TableHead>Usage (m³)</TableHead><TableHead>Diff. Usage (m³)</TableHead><TableHead className="text-right">Outstanding (ETB)</TableHead><TableHead className="text-right">Current Bill (ETB)</TableHead><TableHead className="text-right">Total Payable (ETB)</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{paginatedBillingHistory.map(bill => {
-                const usageForBill = bill.usageM3 ?? (bill.currentReadingValue - bill.previousReadingValue);
-                const displayUsage = !isNaN(usageForBill) ? usageForBill.toFixed(2) : "N/A";
+              {billingHistory.length === 0 ? (
+                <p className="text-muted-foreground text-sm text-center py-6 italic">No billing history found for this meter.</p>
+              ) : (
+                <>
+                  {/* Billing History Table - Desktop */}
+                  <div className="overflow-x-auto hidden xl:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Month</TableHead>
+                          <TableHead>Date Billed</TableHead>
+                          <TableHead className="text-right">Prev. Reading</TableHead>
+                          <TableHead className="text-right">Curr. Reading</TableHead>
+                          <TableHead>Usage (m³)</TableHead>
+                          <TableHead>Diff. Usage (m³)</TableHead>
+                          <TableHead className="text-right">DEBIT_30</TableHead>
+                          <TableHead className="text-right">DEBIT_30_60</TableHead>
+                          <TableHead className="text-right">DEBIT_60</TableHead>
+                          <TableHead className="text-right">Outstanding (ETB)</TableHead>
+                          <TableHead className="text-right">Current Bill (ETB)</TableHead>
+                          <TableHead className="text-right">Total Payable (ETB)</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedBillingHistory.map(bill => {
+                          const usageForBill = bill.CONS ?? (bill.CURRREAD - bill.PREVREAD);
+                          const displayUsage = !isNaN(usageForBill) ? usageForBill.toFixed(2) : "N/A";
+                          const diffUsageValue = bill.differenceUsage ?? 0;
+                          const displayDiffUsage = !isNaN(diffUsageValue) ? diffUsageValue.toFixed(2) : 'N/A';
 
-                const diffUsageValue = bill.differenceUsage ?? (usageForBill - (associatedCustomers.reduce((sum, cust) => sum + ((cust.currentReading ?? 0) - (cust.previousReading ?? 0)), 0)));
-                const displayDiffUsage = !isNaN(diffUsageValue) ? diffUsageValue.toFixed(2) : 'N/A';
-                return (
-                  <TableRow key={bill.id + bill.monthYear}>
-                    <TableCell>{bill.monthYear}</TableCell>
-                    <TableCell>{formatDateForDisplay(bill.billPeriodEndDate)}</TableCell>
-                    <TableCell className="text-right">{bill.previousReadingValue.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{bill.currentReadingValue.toFixed(2)}</TableCell>
-                    <TableCell>{displayUsage}</TableCell>
-                    <TableCell className={cn("text-right", diffUsageValue < 0 ? "text-amber-600" : "text-green-600")}>{displayDiffUsage}</TableCell>
-                    <TableCell className="text-right">{bill.balanceCarriedForward?.toFixed(2) ?? '0.00'}</TableCell>
-                    <TableCell className="text-right font-medium">{bill.totalAmountDue.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-bold">{((bill.balanceCarriedForward ?? 0) + bill.totalAmountDue).toFixed(2)}</TableCell>
-                    <TableCell><Badge variant={bill.paymentStatus === 'Paid' ? 'default' : 'destructive'}>{bill.paymentStatus}</Badge></TableCell>
-                    <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handlePrintSlip(bill)}><Printer className="mr-2 h-4 w-4" />Print/Export Bill</DropdownMenuItem><DropdownMenuItem onClick={() => handleUpdateBillStatus(bill)}><FileEdit className="mr-2 h-4 w-4" />Edit Status</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteBillingRecord(bill)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Record</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell>
-                  </TableRow>
-                )
-              })}</TableBody></Table>) : (<p className="text-muted-foreground text-sm text-center py-4">No billing history found.</p>)}</div>
+                          // Aging Debt Calculation (FIFO Assumption)
+                          const fullIndex = billingHistory.findIndex(b => b.id === bill.id);
+                          let remainingOutstanding = bill.balanceCarriedForward ?? 0;
+
+                          let debit30 = 0;
+                          let debit60 = 0;
+                          let debit90 = 0; // >60
+
+                          // 1. DEBIT_30: From immediate previous bill (index + 1)
+                          if (remainingOutstanding > 0.01) {
+                            const prev1 = billingHistory[fullIndex + 1];
+                            if (prev1) {
+                              const attributable = prev1.TOTALBILLAMOUNT;
+                              const amount = Math.min(remainingOutstanding, attributable);
+                              debit30 = amount;
+                              remainingOutstanding -= amount;
+                            } else {
+                              // If no previous bill record exists but there is outstanding, 
+                              // we assume it's all older? Or all fresh? 
+                              // FIFO usually implies oldest debt is cleared first.
+                              // If we can't find the bill it belongs to, it's effectively "older" or "unknown".
+                              // Let's dump it into >60 if we can't trace it, or just keep it here?
+                              // Let's assume if we can't find history, it's old debt.
+                              debit90 += remainingOutstanding;
+                              remainingOutstanding = 0;
+                            }
+                          }
+
+                          // 2. DEBIT_30_60: From 2nd previous bill (index + 2)
+                          if (remainingOutstanding > 0.01) {
+                            const prev2 = billingHistory[fullIndex + 2];
+                            if (prev2) {
+                              const attributable = prev2.TOTALBILLAMOUNT;
+                              const amount = Math.min(remainingOutstanding, attributable);
+                              debit60 = amount;
+                              remainingOutstanding -= amount;
+                            } else {
+                              debit90 += remainingOutstanding;
+                              remainingOutstanding = 0;
+                            }
+                          }
+
+                          // 3. DEBIT_>60: Remainder
+                          if (remainingOutstanding > 0.01) {
+                            debit90 += remainingOutstanding;
+                          }
+
+                          return (
+                            <TableRow key={bill.id + bill.monthYear}>
+                              <TableCell>{bill.monthYear}</TableCell>
+                              <TableCell>{formatDateForDisplay(bill.billPeriodEndDate)}</TableCell>
+                              <TableCell className="text-right">{bill.PREVREAD.toFixed(2)}</TableCell>
+                              <TableCell className="text-right">{bill.CURRREAD.toFixed(2)}</TableCell>
+                              <TableCell>{displayUsage}</TableCell>
+                              <TableCell className={cn("text-right", diffUsageValue < 0 ? "text-amber-600" : "text-green-600")}>{displayDiffUsage}</TableCell>
+                              <TableCell className="text-right">{debit30 > 0 ? debit30.toFixed(2) : '-'}</TableCell>
+                              <TableCell className="text-right">{debit60 > 0 ? debit60.toFixed(2) : '-'}</TableCell>
+                              <TableCell className="text-right">{debit90 > 0 ? debit90.toFixed(2) : '-'}</TableCell>
+                              <TableCell className="text-right">{bill.balanceCarriedForward?.toFixed(2) ?? '0.00'}</TableCell>
+                              <TableCell className="text-right font-medium">{bill.TOTALBILLAMOUNT.toFixed(2)}</TableCell>
+                              <TableCell className="text-right font-bold">{((bill.balanceCarriedForward ?? 0) + bill.TOTALBILLAMOUNT).toFixed(2)}</TableCell>
+                              <TableCell><Badge variant={bill.paymentStatus === 'Paid' ? 'default' : 'destructive'}>{bill.paymentStatus}</Badge></TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                      <span className="sr-only">Open menu</span>
+                                      <Menu className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                    <DropdownMenuItem onClick={() => handlePrintSlip(bill)}><Printer className="mr-2 h-4 w-4" />Print/Export Bill</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleUpdateBillStatus(bill)}><FileEdit className="mr-2 h-4 w-4" />Edit Status</DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => handleDeleteBillingRecord(bill)} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Delete Record</DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Billing History Cards - Mobile */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:hidden gap-4 p-4">
+                    {paginatedBillingHistory.map(bill => (
+                      <Card key={bill.id} className="border shadow-sm overflow-hidden bg-slate-50/30">
+                        <div className="px-4 py-2 bg-slate-100/50 border-b flex justify-between items-center">
+                          <span className="font-bold text-sm">{bill.monthYear}</span>
+                          <Badge variant={bill.paymentStatus === 'Paid' ? 'default' : 'destructive'} className="text-[10px] h-4.5 px-1">{bill.paymentStatus}</Badge>
+                        </div>
+                        <CardContent className="p-4 space-y-2">
+                          <div className="grid grid-cols-2 gap-2 text-[11px]">
+                            <div><span className="text-muted-foreground font-semibold uppercase">Usage:</span> {bill.CONS?.toFixed(2)} m³</div>
+                            <div><span className="text-muted-foreground font-semibold uppercase">Diff:</span> {bill.differenceUsage?.toFixed(2)} m³</div>
+                            <div className="col-span-2 flex justify-between border-t pt-1 mt-1 font-bold text-primary">
+                              <span>Total Payable:</span>
+                              <span>ETB {((bill.balanceCarriedForward ?? 0) + bill.TOTALBILLAMOUNT).toFixed(2)}</span>
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2 pt-2 border-t mt-1">
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] px-2" onClick={() => handlePrintSlip(bill)}><Printer className="h-3 w-3 mr-1" />Print</Button>
+                            <Button variant="ghost" size="sm" className="h-7 text-[10px] px-2" onClick={() => handleUpdateBillStatus(bill)}><RefreshCcw className="h-3 w-3 mr-1" />Status</Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </>
+              )}
             </CardContent>
             {billingHistory.length > 0 && (
               <TablePagination
@@ -983,7 +1190,114 @@ export default function BulkMeterDetailsPage() {
 
           <Card className="shadow-lg non-printable">
             <CardHeader><CardTitle className="flex items-center gap-2"><UsersIcon className="h-5 w-5 text-primary" />Associated Individual Customers</CardTitle><CardDescription>List of individual customers connected to this bulk meter ({associatedCustomers.length} found).</CardDescription></CardHeader>
-            <CardContent>{paginatedCustomers.length === 0 && associatedCustomers.length > 0 ? (<div className="text-center text-muted-foreground py-4">No individual customers on this page.</div>) : associatedCustomers.length === 0 ? (<div className="text-center text-muted-foreground py-4">No individual customers are currently associated with this bulk meter.</div>) : (<div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Customer Name</TableHead><TableHead>Meter No.</TableHead><TableHead>Usage (m³)</TableHead><TableHead>Bill (ETB)</TableHead><TableHead>Pay Status</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{paginatedCustomers.map((customer) => { const usage = customer.currentReading - customer.previousReading; return (<TableRow key={customer.customerKeyNumber}><TableCell className="font-medium">{customer.name}</TableCell><TableCell>{customer.meterNumber}</TableCell><TableCell>{usage.toFixed(2)}</TableCell><TableCell>{customer.calculatedBill.toFixed(2)}</TableCell><TableCell><Badge variant={customer.paymentStatus === 'Paid' ? 'default' : customer.paymentStatus === 'Unpaid' ? 'destructive' : 'secondary'} className={cn(customer.paymentStatus === 'Paid' && "bg-green-500 hover:bg-green-600", customer.paymentStatus === 'Pending' && "bg-yellow-500 hover:bg-yellow-600")}>{customer.paymentStatus === 'Paid' ? <CheckCircle className="mr-1 h-3.5 w-3.5" /> : customer.paymentStatus === 'Unpaid' ? <XCircle className="mr-1 h-3.5 w-3.5" /> : <Clock className="mr-1 h-3.5 w-3.5" />}{customer.paymentStatus}</Badge></TableCell><TableCell><Badge variant={customer.status === 'Active' ? 'default' : 'destructive'}>{customer.status}</Badge></TableCell><TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><Menu className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handleEditCustomer(customer)}><FileEdit className="mr-2 h-4 w-4" />Edit</DropdownMenuItem><DropdownMenuItem onClick={() => handleDeleteCustomer(customer)}><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>) })}</TableBody></Table></div>)}</CardContent>
+            <CardContent>
+              {associatedCustomers.length === 0 ? (
+                <div className="text-center text-muted-foreground py-4 italic">No individual customers are currently associated with this bulk meter.</div>
+              ) : (
+                <>
+                  {/* Desktop Table View */}
+                  <div className="overflow-x-auto hidden lg:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Customer Name</TableHead>
+                          <TableHead>Meter No.</TableHead>
+                          <TableHead>Prev. Reading</TableHead>
+                          <TableHead>Curr. Reading</TableHead>
+                          <TableHead>Usage (m³)</TableHead>
+                          <TableHead>Bill (ETB)</TableHead>
+                          <TableHead>Pay Status</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedCustomers.map((customer) => {
+                          const usage = customer.currentReading - customer.previousReading;
+                          return (
+                            <TableRow key={customer.customerKeyNumber}>
+                              <TableCell className="font-medium">{customer.name}</TableCell>
+                              <TableCell>{customer.meterNumber}</TableCell>
+                              <TableCell>{customer.previousReading.toFixed(2)}</TableCell>
+                              <TableCell>{customer.currentReading.toFixed(2)}</TableCell>
+                              <TableCell>{usage.toFixed(2)}</TableCell>
+                              <TableCell>{customer.calculatedBill.toFixed(2)}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={customer.paymentStatus === 'Paid' ? 'default' : customer.paymentStatus === 'Unpaid' ? 'destructive' : 'secondary'}
+                                  className={cn(
+                                    customer.paymentStatus === 'Paid' && "bg-green-500 hover:bg-green-600",
+                                    customer.paymentStatus === 'Pending' && "bg-yellow-500 hover:bg-yellow-600"
+                                  )}
+                                >
+                                  {customer.paymentStatus === 'Paid' ? <CheckCircle className="mr-1 h-3.5 w-3.5" /> : customer.paymentStatus === 'Unpaid' ? <XCircle className="mr-1 h-3.5 w-3.5" /> : <Clock className="mr-1 h-3.5 w-3.5" />}
+                                  {customer.paymentStatus}
+                                </Badge>
+                              </TableCell>
+                              <TableCell><Badge variant={customer.status === 'Active' ? 'default' : 'destructive'}>{customer.status}</Badge></TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                      <span className="sr-only">Open menu</span>
+                                      <Menu className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                    <DropdownMenuItem onClick={() => handleEditCustomer(customer)}><FileEdit className="mr-2 h-4 w-4" />Edit</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleDeleteCustomer(customer)}><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Mobile Card View */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:hidden gap-4 mt-2">
+                    {paginatedCustomers.map((customer) => {
+                      const usage = customer.currentReading - customer.previousReading;
+                      return (
+                        <Card key={customer.customerKeyNumber} className="border shadow-sm">
+                          <CardContent className="p-4 space-y-3">
+                            <div className="flex justify-between items-start">
+                              <div className="font-bold text-base truncate pr-2">{customer.name}</div>
+                              <div className="flex shrink-0 gap-1">
+                                <Badge variant={customer.status === 'Active' ? 'default' : 'destructive'} className="text-[10px] px-1.5 h-5">{customer.status}</Badge>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-7 w-7 p-0"><Menu className="h-4 w-4" /></Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handleEditCustomer(customer)}><FileEdit className="mr-2 h-4 w-4" />Edit</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleDeleteCustomer(customer)}><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-y-2 text-xs">
+                              <div><span className="text-muted-foreground uppercase font-semibold">Meter No:</span> {customer.meterNumber}</div>
+                              <div>
+                                <span className="text-muted-foreground uppercase font-semibold">Pay Status:</span>
+                                <Badge variant={customer.paymentStatus === 'Paid' ? 'default' : 'destructive'} className="ml-1 text-[10px] h-4">
+                                  {customer.paymentStatus}
+                                </Badge>
+                              </div>
+                              <div><span className="text-muted-foreground uppercase font-semibold">Usage:</span> {usage.toFixed(2)} m³</div>
+                              <div><span className="text-muted-foreground uppercase font-semibold">Bill:</span> ETB {customer.calculatedBill.toFixed(2)}</div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </CardContent>
             {associatedCustomers.length > 0 && (
               <TablePagination
                 count={associatedCustomers.length}

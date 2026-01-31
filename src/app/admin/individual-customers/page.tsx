@@ -35,7 +35,7 @@ export default function IndividualCustomersPage() {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = React.useState<StaffMember | null>(null);
   const [customers, setCustomers] = React.useState<IndividualCustomer[]>([]);
-  const [bulkMetersList, setBulkMetersList] = React.useState<{customerKeyNumber: string, name: string}[]>([]);
+  const [bulkMetersList, setBulkMetersList] = React.useState<{ customerKeyNumber: string, name: string }[]>([]);
   const [branches, setBranches] = React.useState<Branch[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState("");
@@ -59,7 +59,7 @@ export default function IndividualCustomersPage() {
       initializeCustomers(),
       initializeBranches()
     ]).then(() => {
-      setBulkMetersList(getBulkMeters().map(bm => ({customerKeyNumber: bm.customerKeyNumber, name: bm.name })));
+      setBulkMetersList(getBulkMeters().map(bm => ({ customerKeyNumber: bm.customerKeyNumber, name: bm.name })));
       setCustomers(getCustomers());
       setBranches(getBranches());
       setIsLoading(false);
@@ -69,7 +69,7 @@ export default function IndividualCustomersPage() {
       setBulkMetersList(updatedBulkMeters.map(bm => ({ customerKeyNumber: bm.customerKeyNumber, name: bm.name })));
     });
     const unsubscribeCustomers = subscribeToCustomers((updatedCustomers) => {
-       setCustomers(updatedCustomers);
+      setCustomers(updatedCustomers);
     });
     const unsubscribeBranches = subscribeToBranches((updatedBranches) => {
       setBranches(updatedBranches);
@@ -103,7 +103,7 @@ export default function IndividualCustomersPage() {
       if (result.success) {
         toast({ title: "Customer Deleted", description: `${customerToDelete.name} has been removed.` });
       } else {
-        toast({ variant: "destructive", title: "Delete Failed", description: result.message || "Could not delete customer."});
+        toast({ variant: "destructive", title: "Delete Failed", description: result.message || "Could not delete customer." });
       }
       setCustomerToDelete(null);
     }
@@ -112,17 +112,17 @@ export default function IndividualCustomersPage() {
 
   const handleSubmitCustomer = async (data: IndividualCustomerFormValues) => {
     if (!currentUser) {
-        toast({ variant: 'destructive', title: 'Error', description: 'User information not found.' });
-        return;
+      toast({ variant: 'destructive', title: 'Error', description: 'User information not found.' });
+      return;
     }
-    
+
     if (selectedCustomer) {
       if (!hasPermission('customers_update')) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to update customers.' }); return; }
       const result = await updateCustomerInStore(selectedCustomer.customerKeyNumber, data);
       if (result.success) {
         toast({ title: "Customer Updated", description: `${data.name} has been updated.` });
       } else {
-         toast({
+        toast({
           variant: "destructive",
           title: "Update Failed",
           description: result.message || "Could not update the customer.",
@@ -134,13 +134,13 @@ export default function IndividualCustomersPage() {
       if (result.success && result.data) {
         toast({ title: "Customer Added", description: `${result.data.name} has been added.` });
       } else {
-        toast({ variant: "destructive", title: "Add Failed", description: result.message || "Could not add customer."});
+        toast({ variant: "destructive", title: "Add Failed", description: result.message || "Could not add customer." });
       }
     }
     setIsFormOpen(false);
     setSelectedCustomer(null);
   };
-  
+
   const getBranchNameFromList = (branchId?: string, fallbackLocation?: string) => {
     if (branchId) {
       const branch = branches.find(b => b.id === branchId);
@@ -159,14 +159,14 @@ export default function IndividualCustomersPage() {
   const filteredCustomers = customersForUser.filter(customer => {
     const branchName = getBranchNameFromList(customer.branchId, customer.subCity);
     return (
-        customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.meterNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        branchName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.woreda.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (customer.assignedBulkMeterId && bulkMetersList.find(bm => bm.customerKeyNumber === customer.assignedBulkMeterId)?.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.meterNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      branchName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.woreda.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (customer.assignedBulkMeterId && bulkMetersList.find(bm => bm.customerKeyNumber === customer.assignedBulkMeterId)?.name.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   });
-  
+
   const paginatedCustomers = filteredCustomers.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
@@ -177,7 +177,7 @@ export default function IndividualCustomersPage() {
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <h1 className="text-2xl md:text-3xl font-bold">Individual Customers Management</h1>
         <div className="flex w-full flex-col sm:flex-row items-center gap-2">
-           <div className="relative w-full sm:w-auto flex-grow">
+          <div className="relative w-full sm:w-auto flex-grow">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
@@ -201,19 +201,19 @@ export default function IndividualCustomersPage() {
           <CardDescription>View, edit, and manage all individual customer information.</CardDescription>
         </CardHeader>
         <CardContent>
-           {isLoading ? (
-             <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">
-                Loading customers...
-             </div>
-           ) : customers.length === 0 && !searchTerm ? (
-             <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
-                <User className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <h3 className="text-lg font-semibold">No Customers Found</h3>
-                <p className="text-muted-foreground mt-1">Click "Add New" to get started.</p>
-             </div>
+          {isLoading ? (
+            <div className="mt-4 p-4 border rounded-md bg-muted/50 text-center text-muted-foreground">
+              Loading customers...
+            </div>
+          ) : customers.length === 0 && !searchTerm ? (
+            <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
+              <User className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold">No Customers Found</h3>
+              <p className="text-muted-foreground mt-1">Click "Add New" to get started.</p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
-                <IndividualCustomerTable
+              <IndividualCustomerTable
                 data={paginatedCustomers}
                 onEdit={handleEditCustomer}
                 onDelete={handleDeleteCustomer}
@@ -221,7 +221,7 @@ export default function IndividualCustomersPage() {
                 branches={branches}
                 canEdit={hasPermission('customers_update')}
                 canDelete={hasPermission('customers_delete')}
-                />
+              />
             </div>
           )}
         </CardContent>

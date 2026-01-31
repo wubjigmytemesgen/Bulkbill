@@ -5,11 +5,11 @@ import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { BillTable } from "../bill-table";
-import { 
+import {
   getBills, initializeBills, subscribeToBills,
   getCustomers, initializeCustomers, subscribeToCustomers,
   getBulkMeters, initializeBulkMeters, subscribeToBulkMeters,
-  getBranches, initializeBranches, subscribeToBranches 
+  getBranches, initializeBranches, subscribeToBranches
 } from "@/lib/data-store";
 import type { DomainBill } from "@/lib/data-store";
 import type { IndividualCustomer } from "@/app/admin/individual-customers/individual-customer-types";
@@ -32,13 +32,13 @@ export default function UnsettledBillsReportPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState("");
   const [selectedBranchId, setSelectedBranchId] = React.useState("all");
-  
+
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
-  
+
   React.useEffect(() => {
     const user = localStorage.getItem("user");
-    if(user) {
+    if (user) {
       const parsedUser = JSON.parse(user);
       setCurrentUser(parsedUser);
       // If the user has a branch assigned, default the branch filter to their branch.
@@ -48,18 +48,18 @@ export default function UnsettledBillsReportPage() {
     }
 
     const fetchData = async () => {
-        setIsLoading(true);
-        await Promise.all([
-            initializeBills(),
-            initializeCustomers(),
-            initializeBulkMeters(),
-            initializeBranches(),
-        ]);
-        setBills(getBills());
-        setCustomers(getCustomers());
-        setBulkMeters(getBulkMeters());
-        setBranches(getBranches());
-        setIsLoading(false);
+      setIsLoading(true);
+      await Promise.all([
+        initializeBills(),
+        initializeCustomers(),
+        initializeBulkMeters(),
+        initializeBranches(),
+      ]);
+      setBills(getBills());
+      setCustomers(getCustomers());
+      setBulkMeters(getBulkMeters());
+      setBranches(getBranches());
+      setIsLoading(false);
     };
     fetchData();
 
@@ -69,59 +69,59 @@ export default function UnsettledBillsReportPage() {
     const unsubBranches = subscribeToBranches(setBranches);
 
     return () => {
-        unsubBills();
-        unsubCustomers();
-        unsubBms();
-        unsubBranches();
+      unsubBills();
+      unsubCustomers();
+      unsubBms();
+      unsubBranches();
     };
   }, []);
 
   const filteredBills = React.useMemo(() => {
     let visibleBills = bills.filter(bill => bill.paymentStatus !== 'Paid');
-    
+
     // If the current user does NOT have permission to generate reports for all branches,
     // and they have a `branchId` assigned, force the filter to their branch.
     const branchIdToFilter = (currentUser && currentUser.branchId && !hasPermission('reports_generate_all'))
       ? currentUser.branchId
       : selectedBranchId;
-    
+
     if (branchIdToFilter && branchIdToFilter !== "all") {
-        visibleBills = visibleBills.filter(bill => {
-            const entityId = bill.individualCustomerId || bill.bulkMeterId;
-            if (!entityId) return false;
+      visibleBills = visibleBills.filter(bill => {
+        const entityId = bill.individualCustomerId || bill.CUSTOMERKEY;
+        if (!entityId) return false;
 
-            const customer = customers.find(c => c.customerKeyNumber === entityId);
-            if (customer) {
-                if (customer.branchId === branchIdToFilter) return true;
-                if (customer.assignedBulkMeterId) {
-                    const bm = bulkMeters.find(b => b.customerKeyNumber === customer.assignedBulkMeterId);
-                    if (bm?.branchId === branchIdToFilter) return true;
-                }
-                return false;
-            }
+        const customer = customers.find(c => c.customerKeyNumber === entityId);
+        if (customer) {
+          if (customer.branchId === branchIdToFilter) return true;
+          if (customer.assignedBulkMeterId) {
+            const bm = bulkMeters.find(b => b.customerKeyNumber === customer.assignedBulkMeterId);
+            if (bm?.branchId === branchIdToFilter) return true;
+          }
+          return false;
+        }
 
-            const bulkMeter = bulkMeters.find(b => b.customerKeyNumber === entityId);
-            if (bulkMeter?.branchId === branchIdToFilter) return true;
+        const bulkMeter = bulkMeters.find(b => b.customerKeyNumber === entityId);
+        if (bulkMeter?.branchId === branchIdToFilter) return true;
 
-            return false;
-        });
+        return false;
+      });
     }
 
     if (searchTerm) {
       const lowercasedTerm = searchTerm.toLowerCase();
       visibleBills = visibleBills.filter(bill => {
-        const customerKey = bill.individualCustomerId || bill.bulkMeterId;
+        const customerKey = bill.individualCustomerId || bill.CUSTOMERKEY;
         const customer = customers.find(c => c.customerKeyNumber === customerKey);
         const bulkMeter = bulkMeters.find(bm => bm.customerKeyNumber === customerKey);
         return customerKey?.toLowerCase().includes(lowercasedTerm) ||
-               customer?.name.toLowerCase().includes(lowercasedTerm) ||
-               bulkMeter?.name.toLowerCase().includes(lowercasedTerm);
+          customer?.name.toLowerCase().includes(lowercasedTerm) ||
+          bulkMeter?.name.toLowerCase().includes(lowercasedTerm);
       });
     }
 
     return visibleBills.sort((a, b) => new Date(b.billPeriodEndDate).getTime() - new Date(a.billPeriodEndDate).getTime());
   }, [bills, customers, bulkMeters, searchTerm, selectedBranchId, currentUser]);
-  
+
   const paginatedBills = filteredBills.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
@@ -139,34 +139,34 @@ export default function UnsettledBillsReportPage() {
                 <CardDescription>A real-time list of all bills that have been sent but not yet paid.</CardDescription>
               </div>
             </div>
-             <div className="flex gap-2 w-full md:w-auto">
-                <div className="relative flex-grow md:flex-grow-0">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="search"
-                    placeholder="Search by Key or Name..."
-                    className="pl-8"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-                {hasPermission('reports_generate_all') && (
-                  <Select value={selectedBranchId || undefined} onValueChange={setSelectedBranchId}>
-                      <SelectTrigger className="w-full md:w-[200px]">
-                          <SelectValue placeholder="Select Branch" />
-                      </SelectTrigger>
-                      <SelectContent>
-                          <SelectItem value="all">All Branches</SelectItem>
-                          {branches.map((branch) => (
-                              branch?.id !== undefined && branch?.id !== null ? (
-                                <SelectItem key={String(branch.id)} value={String(branch.id)}>
-                                  {branch.name}
-                                </SelectItem>
-                              ) : null
-                          ))}
-                      </SelectContent>
-                  </Select>
-                )}
+            <div className="flex gap-2 w-full md:w-auto">
+              <div className="relative flex-grow md:flex-grow-0">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search by Key or Name..."
+                  className="pl-8"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              {hasPermission('reports_generate_all') && (
+                <Select value={selectedBranchId || undefined} onValueChange={setSelectedBranchId}>
+                  <SelectTrigger className="w-full md:w-[200px]">
+                    <SelectValue placeholder="Select Branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Branches</SelectItem>
+                    {branches.map((branch) => (
+                      branch?.id !== undefined && branch?.id !== null ? (
+                        <SelectItem key={String(branch.id)} value={String(branch.id)}>
+                          {branch.name}
+                        </SelectItem>
+                      ) : null
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -174,10 +174,10 @@ export default function UnsettledBillsReportPage() {
           {isLoading ? (
             <div className="text-center p-8 text-muted-foreground">Loading unsettled bills...</div>
           ) : (
-            <BillTable bills={paginatedBills} customers={customers} bulkMeters={bulkMeters} branches={branches} />
+            <BillTable bills={paginatedBills} customers={customers} bulkMeters={bulkMeters} branches={branches} allBills={bills} />
           )}
         </CardContent>
-         {filteredBills.length > 0 && (
+        {filteredBills.length > 0 && (
           <TablePagination
             count={filteredBills.length}
             page={page}

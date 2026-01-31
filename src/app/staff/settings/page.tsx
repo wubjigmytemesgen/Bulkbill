@@ -11,6 +11,7 @@ import { Save, AlertTriangle, Info, DollarSign, Bell, FileDown, Lock } from "luc
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Alert, AlertTitle } from "@/components/ui/alert";
+import { getDefaultBillingCycleDayString } from "@/lib/billing-config";
 
 const APP_NAME_KEY = "aawsa-app-name";
 const CURRENCY_KEY = "aawsa-default-currency";
@@ -35,7 +36,7 @@ export default function StaffSettingsPage() {
     const [appName, setAppName] = React.useState("AAWSA Billing Portal");
     const [defaultCurrency, setDefaultCurrency] = React.useState("ETB");
     const [enableDarkMode, setEnableDarkMode] = React.useState(false);
-    const [billingCycleDay, setBillingCycleDay] = React.useState("1");
+    const [billingCycleDay, setBillingCycleDay] = React.useState(getDefaultBillingCycleDayString());
     const [enableOverdueReminders, setEnableOverdueReminders] = React.useState(false);
 
     // State for new settings

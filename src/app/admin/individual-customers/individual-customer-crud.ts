@@ -1,4 +1,4 @@
-import { dbCreateCustomer, dbGetAllCustomers, dbUpdateCustomer, dbDeleteCustomer } from '@/lib/db-queries';
+import { dbCreateIndividualCustomer, dbGetAllCustomers, dbUpdateCustomer, dbDeleteCustomer } from '@/lib/db-queries';
 
 interface IndividualCustomer {
   id: string;
@@ -13,7 +13,7 @@ export const createIndividualCustomer = async (customer: IndividualCustomer): Pr
   if (!customer.id || !customer.name || !customer.address || !customer.contact || !customer.meterId) {
     throw new Error('All fields are required for a new individual customer.');
   }
-  return await dbCreateCustomer(customer);
+  return await dbCreateIndividualCustomer(customer);
 };
 
 export const getAllIndividualCustomers = async (): Promise<IndividualCustomer[]> => {

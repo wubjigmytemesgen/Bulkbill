@@ -9,12 +9,12 @@ import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { Branch } from "./branch-types";
-import { BranchFormDialog, type BranchFormValues } from "./branch-form-dialog"; 
+import { BranchFormDialog, type BranchFormValues } from "./branch-form-dialog";
 import { BranchTable } from "./branch-table";
-import { 
-  getBranches, 
-  addBranch as addBranchToStore, 
-  updateBranch as updateBranchInStore, 
+import {
+  getBranches,
+  addBranch as addBranchToStore,
+  updateBranch as updateBranchInStore,
   deleteBranch as deleteBranchFromStore,
   subscribeToBranches,
   initializeBranches
@@ -33,7 +33,7 @@ export default function BranchesPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedBranch, setSelectedBranch] = React.useState<Branch | null>(null);
   const [branchToDelete, setBranchToDelete] = React.useState<Branch | null>(null);
-  
+
   const canCreate = hasPermission('branches_create');
   const canUpdate = hasPermission('branches_update');
   const canDelete = hasPermission('branches_delete');
@@ -45,10 +45,10 @@ export default function BranchesPage() {
       setBranches(getBranches());
       setIsLoading(false);
     });
-    
+
     const unsubscribe = subscribeToBranches((updatedBranches) => {
       setBranches(updatedBranches);
-      setIsLoading(false); 
+      setIsLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -88,7 +88,7 @@ export default function BranchesPage() {
         toast({ title: "Branch Updated", description: `${data.name} has been updated.` });
       } else {
         if (!canCreate) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'You do not have permission to create branches.' }); return; }
-        await addBranchToStore(data); 
+        await addBranchToStore(data);
         toast({ title: "Branch Added", description: `${data.name} has been added.` });
       }
     } catch (e) {
@@ -103,18 +103,18 @@ export default function BranchesPage() {
     branch.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (branch.contactPerson && branch.contactPerson.toLowerCase().includes(searchTerm.toLowerCase()))
   );
-  
+
   if (!canView) {
-      return (
-          <div className="space-y-6">
-              <h1 className="text-2xl md:text-3xl font-bold">Branch Management</h1>
-              <Alert variant="destructive">
-                  <Lock className="h-4 w-4" />
-                  <AlertTitle>Access Denied</AlertTitle>
-                  <CardDescription>You do not have permission to view this page.</CardDescription>
-              </Alert>
-          </div>
-      )
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl md:text-3xl font-bold">Branch Management</h1>
+        <Alert variant="destructive">
+          <Lock className="h-4 w-4" />
+          <AlertTitle>Access Denied</AlertTitle>
+          <CardDescription>You do not have permission to view this page.</CardDescription>
+        </Alert>
+      </div>
+    )
   }
 
   return (
@@ -151,20 +151,20 @@ export default function BranchesPage() {
               Loading branches...
             </div>
           ) : branches.length === 0 && !searchTerm ? (
-             <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
-                <Building className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <h3 className="text-lg font-semibold">No Branches Found</h3>
-                <p className="text-muted-foreground mt-1">Click "Add New" to get started.</p>
-             </div>
+            <div className="mt-4 p-8 border-2 border-dashed rounded-lg bg-muted/50 text-center">
+              <Building className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold">No Branches Found</h3>
+              <p className="text-muted-foreground mt-1">Click "Add New" to get started.</p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
-                <BranchTable
+              <BranchTable
                 data={filteredBranches}
                 onEdit={handleEditBranch}
                 onDelete={handleDeleteBranch}
                 canEdit={canUpdate}
                 canDelete={canDelete}
-                />
+              />
             </div>
           )}
         </CardContent>

@@ -127,10 +127,12 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
       form.reset({
         name: defaultValues.name || "",
         customerKeyNumber: defaultValues.customerKeyNumber || "",
+        instKey: defaultValues.instKey || "",
         contractNumber: defaultValues.contractNumber || "",
         customerType: defaultValues.customerType || undefined,
         bookNumber: defaultValues.bookNumber || "",
         ordinal: defaultValues.ordinal ?? undefined,
+        NUMBER_OF_DIALS: defaultValues.NUMBER_OF_DIALS ?? undefined,
         meterSize: defaultValues.meterSize ?? undefined,
         meterNumber: defaultValues.meterNumber || "",
         previousReading: defaultValues.previousReading ?? undefined,
@@ -149,10 +151,12 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
       form.reset({
         name: "",
         customerKeyNumber: "",
+        instKey: "",
         contractNumber: "",
         customerType: undefined,
         bookNumber: "",
         ordinal: undefined,
+        NUMBER_OF_DIALS: undefined,
         meterSize: undefined,
         meterNumber: "",
         previousReading: undefined,
@@ -286,11 +290,13 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="customerKeyNumber" render={({ field }) => (<FormItem><FormLabel>Cust. Key No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} disabled={!!defaultValues} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="instKey" render={({ field }) => (<FormItem><FormLabel>INST_KEY <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} placeholder="e.g., INST-12345" /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="contractNumber" render={({ field }) => (<FormItem><FormLabel>Contract No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
 
               <FormField control={form.control} name="customerType" render={({ field }) => (<FormItem><FormLabel>Customer Type <span className="text-destructive">*</span></FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger></FormControl><SelectContent>{customerTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="bookNumber" render={({ field }) => (<FormItem><FormLabel>Book No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="ordinal" render={({ field }) => (<FormItem><FormLabel>Ordinal <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value, 10))} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="NUMBER_OF_DIALS" render={({ field }) => (<FormItem><FormLabel>Number of Dials</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value, 10))} /></FormControl><FormMessage /></FormItem>)} />
 
               <FormField
                 control={form.control}
@@ -318,7 +324,7 @@ export function IndividualCustomerFormDialog({ open, onOpenChange, onSubmit, def
                   </FormItem>
                 )}
               />
-              <FormField control={form.control} name="meterNumber" render={({ field }) => (<FormItem><FormLabel>Meter No. <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="meterNumber" render={({ field }) => (<FormItem><FormLabel>METER_KEY <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} placeholder="e.g., MET-2822965" /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="previousReading" render={({ field }) => (<FormItem><FormLabel>Previous Reading <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />
 
               <FormField control={form.control} name="currentReading" render={({ field }) => (<FormItem><FormLabel>Current Reading <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />

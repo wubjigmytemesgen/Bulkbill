@@ -80,7 +80,7 @@ const getBillsTool = ai.defineTool(
             
             filteredBills = filteredBills.filter(bill => {
                 const customer = bill.individualCustomerId ? allCustomers.find(c => c.customerKeyNumber === bill.individualCustomerId) : null;
-                const meter = bill.bulkMeterId ? allMeters.find(m => m.customerKeyNumber === bill.bulkMeterId) : null;
+                const meter = bill.CUSTOMERKEY ? allMeters.find(m => m.customerKeyNumber === bill.CUSTOMERKEY) : null;
                 
                 return (customer && branchCustomerIds.has(customer.customerKeyNumber)) || 
                        (meter && branchMeterIds.has(meter.customerKeyNumber)) ||
@@ -237,11 +237,11 @@ export async function generateReport(input: ReportRequest): Promise<ReportRespon
         if (branch) {
           const branchMeterIds = new Set(getBulkMeters().filter(m => m.branchId === branch.id).map(x => x.customerKeyNumber));
           const branchCustIds = new Set(allCustomers.filter(c => c.branchId === branch.id).map(x => x.customerKeyNumber));
-          filtered = filtered.filter(b => (typeof b.individualCustomerId === 'string' && branchCustIds.has(b.individualCustomerId)) || (typeof b.bulkMeterId === 'string' && branchMeterIds.has(b.bulkMeterId)));
+          filtered = filtered.filter(b => (typeof b.individualCustomerId === 'string' && branchCustIds.has(b.individualCustomerId)) || (typeof b.CUSTOMERKEY === 'string' && branchMeterIds.has(b.CUSTOMERKEY)));
         }
       }
       const headers = ['Bill ID', 'Customer', 'Amount', 'Status', 'Due Date'];
-  const data = filtered.map(b => ({ id: b.id, customer: b.individualCustomerId || b.bulkMeterId, amount: b.totalAmountDue ?? 0, status: b.paymentStatus, due_date: b.dueDate }));
+  const data = filtered.map(b => ({ id: b.id, customer: b.individualCustomerId || b.CUSTOMERKEY, amount: b.TOTALBILLAMOUNT ?? 0, status: b.paymentStatus, due_date: b.dueDate }));
       return buildResponse(data, headers, `Found ${data.length} unpaid bills.`);
     }
 

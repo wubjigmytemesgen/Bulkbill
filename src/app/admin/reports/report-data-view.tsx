@@ -5,6 +5,7 @@ import * as React from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { format, parseISO } from 'date-fns';
+import { formatDate } from "@/lib/utils";
 
 interface ReportDataViewProps {
   data: any[];
@@ -12,27 +13,26 @@ interface ReportDataViewProps {
 }
 
 export function ReportDataView({ data, headers }: ReportDataViewProps) {
-  
+
   const formatValue = (value: any): string => {
     if (value === null || value === undefined) {
       return "-";
+    }
+    if (value instanceof Date) {
+      return formatDate(value);
     }
     if (typeof value === 'boolean') {
       return value ? "Yes" : "No";
     }
     // Check if it's a date-like string (YYYY-MM-DDTHH:mm:ss.sssZ)
     if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
-        try {
-            return format(parseISO(value), 'PP pp'); // e.g., Jan 1, 2023, 12:00:00 PM
-        } catch {
-            // Not a valid date, fall back to default
-        }
+      return formatDate(value);
     }
     if (typeof value === 'number') {
-        // Check if it looks like a price or a reading
-        if (String(value).includes('.')) {
-            return value.toFixed(2);
-        }
+      // Check if it looks like a price or a reading
+      if (String(value).includes('.')) {
+        return value.toFixed(2);
+      }
     }
     if (typeof value === 'object') {
       return JSON.stringify(value, null, 2);
@@ -72,7 +72,7 @@ export function ReportDataView({ data, headers }: ReportDataViewProps) {
           </TableBody>
         </Table>
       </div>
-       <ScrollBar orientation="horizontal" />
+      <ScrollBar orientation="horizontal" />
     </ScrollArea>
   );
 }
